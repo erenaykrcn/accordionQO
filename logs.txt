@@ -8,3 +8,4 @@ Propagating Det. -24827586.0
 Propagating Det. -23793104.0
 Propagating Det. -30000000.0
 Propagating Det. -30000000.0
+Propagating Det. -30000000.0

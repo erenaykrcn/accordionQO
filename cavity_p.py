@@ -58,8 +58,11 @@ def run_one_detuning(job):
     alpha_row = cavity_monitor.alpha[0]
 
     if isinstance(alpha_row, torch.Tensor):
+        print('here')
         alpha_row = alpha_row.detach().cpu()
 
+    del cavity_monitor
+    del bec   # ← also important
     return d_idx, alpha_row
 
 
