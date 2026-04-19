@@ -10,7 +10,7 @@ from tqdm.auto import tqdm
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import get_context
 
-N_iterations_GS=int(1e5)
+N_iterations_GS=int(1e4)
 
 _G = {}
 
