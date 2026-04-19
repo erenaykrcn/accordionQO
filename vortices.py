@@ -12,6 +12,18 @@ from multiprocessing import get_context
 
 _G = {}
 
+def make_single_vortex_state(X, Y, sigma_adim, core_adim=1e-6, X0=0.0, Y0=0.0, adim_length=1.0):
+    X0 = X0 / adim_length
+    Y0 = Y0 / adim_length
+    Xs = X - X0
+    Ys = Y - Y0
+    r2 = Xs**2 + Ys**2
+    r = torch.sqrt(r2 + core_adim**2)
+    phase = (Xs + 1j * Ys) / r
+    amplitude = r * torch.exp(-r2 / (2 * sigma_adim**2))
+    psi0 = amplitude * phase
+    return psi0
+
 def init_worker(config_path, psi_final):
     # Parse config INSIDE each worker process
     config = parse_config(config_path)
