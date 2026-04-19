@@ -48,6 +48,8 @@ def run_one_detuning(job):
     )
 
     cavity_monitor = CavityMonitor(cavity)
+    with open(f"./logs.txt", "a") as file:
+        file.write(f"Propagating Det. {detuning}\n")
 
     bec.propagate(
         potentials=[trap, contact, cavity],
