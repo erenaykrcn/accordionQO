@@ -1,1 +1,10 @@
 Propagating Det. -30000000.0
+Propagating Det. -30000000.0
+Propagating Det. -28965518.0
+Propagating Det. -27931034.0
+Propagating Det. -26896552.0
+Propagating Det. -25862068.0
+Propagating Det. -24827586.0
+Propagating Det. -23793104.0
+Propagating Det. -30000000.0
+Propagating Det. -30000000.0
