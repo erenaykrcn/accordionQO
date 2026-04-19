@@ -10,7 +10,7 @@ from tqdm.auto import tqdm
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import get_context
 
-N_iterations_GS=int(1e4)
+N_iterations_GS=int(1e1)
 
 _G = {}
 
@@ -114,9 +114,9 @@ if __name__ == "__main__":
     )
 
     jobs = [(i, float(det)) for i, det in enumerate(detunings)]
-
-    nproc = min(len(detunings), os.cpu_count() or 1)
-    ctx = get_context("spawn")
+    nproc = int(os.environ.get("SLURM_CPUS_PER_TASK", "1"))
+    nproc = min(nproc, len(detunings))
+    ctx = get_context("fork")
 
     with ProcessPoolExecutor(
         max_workers=nproc,

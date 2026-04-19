@@ -27,5 +27,5 @@ propagation:
     leave_progress_bar: False
   real_time:
     time_step: 1e-6
-    final_time: 1e-2
+    final_time: 1e-4
     leave_progress_bar: False
