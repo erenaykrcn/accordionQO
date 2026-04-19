@@ -10,21 +10,8 @@ from tqdm.auto import tqdm
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import get_context
 
-N_iterations_GS=int(1e4)
-
-def make_single_vortex_state(X, Y, sigma_adim, core_adim=1e-6, X0=0.0, Y0=0.0, adim_length=1.0):
-    X0 = X0 / adim_length
-    Y0 = Y0 / adim_length
-    Xs = X - X0
-    Ys = Y - Y0
-    r2 = Xs**2 + Ys**2
-    r = torch.sqrt(r2 + core_adim**2)
-    phase = (Xs + 1j * Ys) / r
-    amplitude = r * torch.exp(-r2 / (2 * sigma_adim**2))
-    psi0 = amplitude * phase
-    return psi0
-
 _G = {}
+
 def init_worker(config_path, psi_final):
     # Parse config INSIDE each worker process
     config = parse_config(config_path)
@@ -117,11 +104,12 @@ if __name__ == "__main__":
     )
     bec_PD.ground_state(
             potentials=[trap, contact],
-            N_iterations=N_iterations_GS,
+            N_iterations=config["propagation"]["imaginary_time"]["N_iterations"],
     )
-    psi_final = bec_PD.psi.clone()
+    psi_final = bec_PD.psi.detach().cpu().clone()
 
     detunings = torch.linspace(*config["boundaries"]["cavity_detuning"])
+
     ramp = config["boundaries"]["lattice_ramp"]
 
     rt = config["propagation"]["real_time"]
@@ -138,9 +126,9 @@ if __name__ == "__main__":
     )
 
     jobs = [(i, float(det)) for i, det in enumerate(detunings)]
-
-    nproc = min(len(detunings), os.cpu_count() or 1)
-    ctx = get_context("spawn")
+    nproc = int(os.environ.get("SLURM_CPUS_PER_TASK", "1"))
+    nproc = min(nproc, len(detunings))
+    ctx = get_context("fork")
 
     with ProcessPoolExecutor(
         max_workers=nproc,

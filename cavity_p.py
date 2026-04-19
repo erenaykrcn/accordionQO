@@ -10,8 +10,6 @@ from tqdm.auto import tqdm
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import get_context
 
-N_iterations_GS=int(1e1)
-
 _G = {}
 
 def init_worker(config_path, psi_final):
@@ -91,7 +89,7 @@ if __name__ == "__main__":
 
     bec_PD.ground_state(
         potentials=[trap, contact],
-        N_iterations=N_iterations_GS
+        N_iterations=config["propagation"]["imaginary_time"]["N_iterations"],
     )
 
     psi_final = bec_PD.psi.detach().cpu().clone()

@@ -23,9 +23,9 @@ initial_wavefunction:
 propagation:
   imaginary_time:
     time_step: !eval [-1e-7j]
-    N_iterations: 3000
+    N_iterations: 3e3
     leave_progress_bar: False
   real_time:
     time_step: 1e-6
-    final_time: 1e-4
+    final_time: 1e-2
     leave_progress_bar: False
