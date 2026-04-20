@@ -10,18 +10,64 @@ from tqdm.auto import tqdm
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import get_context
 
-_G = {}
+N_vortices = 20
 
-def make_single_vortex_state(X, Y, sigma_adim, core_adim=1e-6, X0=0.0, Y0=0.0, adim_length=1.0):
-    X0 = X0 / adim_length
-    Y0 = Y0 / adim_length
-    Xs = X - X0
-    Ys = Y - Y0
-    r2 = Xs**2 + Ys**2
-    r = torch.sqrt(r2 + core_adim**2)
-    phase = (Xs + 1j * Ys) / r
-    amplitude = r * torch.exp(-r2 / (2 * sigma_adim**2))
-    psi0 = amplitude * phase
+
+_G = {}
+def make_multi_vortex_state(
+    X,
+    Y,
+    sigma_adim,
+    vortices,
+    adim_length=1.0,
+    background="gaussian",
+    eps=1e-12,
+):
+    device = X.device
+    real_dtype = X.dtype
+    complex_dtype = torch.complex64 if real_dtype == torch.float32 else torch.complex128
+
+    # Background envelope
+    if background == "gaussian":
+        r2 = X**2 + Y**2
+        amplitude = torch.exp(-r2 / (2 * sigma_adim**2))
+    elif background == "uniform":
+        amplitude = torch.ones_like(X)
+    else:
+        raise ValueError("background must be 'gaussian' or 'uniform'")
+
+    psi0 = amplitude.to(complex_dtype)
+
+    for v in vortices:
+        X0 = v.get("X0", 0.0) / adim_length
+        Y0 = v.get("Y0", 0.0) / adim_length
+        charge = int(v.get("charge", 1))
+        core_adim = float(v.get("core_adim", 1e-6))
+
+        Xs = X - X0
+        Ys = Y - Y0
+        r2_local = Xs**2 + Ys**2
+        r_local = torch.sqrt(r2_local + core_adim**2)
+
+        # Unit-charge vortex phase factor
+        z = (Xs + 1j * Ys) / (r_local + eps)
+
+        # Optional core suppression
+        core_amp = r_local
+
+        if charge > 0:
+            vortex_factor = (core_amp * z) ** charge
+        elif charge < 0:
+            vortex_factor = (core_amp * torch.conj(z)) ** (-charge)
+        else:
+            vortex_factor = torch.ones_like(psi0)
+
+        psi0 = psi0 * vortex_factor.to(complex_dtype)
+
+    # Normalize
+    norm = torch.sqrt(torch.sum(torch.abs(psi0)**2))
+    psi0 = psi0 / (norm + eps)
+
     return psi0
 
 def init_worker(config_path, psi_final):
@@ -96,31 +142,20 @@ if __name__ == "__main__":
         complex_dtype=torch.complex64
     )
 
-    """sigma = config["initial_wavefunction"]["gaussian_sigma"] / bec_PD.adim_length
-    bec_PD.psi = torch.exp(
-        -(bec_PD.X**2 + bec_PD.Y**2) / (2 * sigma**2)
-    )
-    bec_PD.ground_state(
-        potentials=[trap, contact],
-        N_iterations=N_iterations_GS
-    )
-    psi_final = bec_PD.psi.detach().cpu().clone()"""
-    sigma_si = config["initial_wavefunction"]["gaussian_sigma"] / bec_PD.adim_length
-    sigma_adim = sigma_si / bec_PD.adim_length
-    bec_PD.psi = make_single_vortex_state(
-        bec_PD.X,
-        bec_PD.Y,
-        sigma_adim=4e-6 / bec_PD.adim_length,
-        core_adim=1e-12,
-        X0=0.0, 
-        Y0=0.0,
-        adim_length=bec_PD.adim_length,
-    )
+    vortices = []
+    for i in range(N_vortices):
+        vortices.append({"X0": np.random.random()*10-5, 
+                         "Y0": np.random.random()*10-5, 
+                         "charge": +1 if np.random.random()>0.5 else -1, "core_adim": 1e-3})
+
+    bec_PD.psi = make_multi_vortex_state(bec_PD.X, bec_PD.Y, sigma_adim=6e-6 / bec_PD.adim_length, vortices=vortices)
     bec_PD.ground_state(
             potentials=[trap, contact],
             N_iterations=config["propagation"]["imaginary_time"]["N_iterations"],
     )
     psi_final = bec_PD.psi.detach().cpu().clone()
+
+
 
     detunings = torch.linspace(*config["boundaries"]["cavity_detuning"])
 
@@ -164,11 +199,11 @@ if __name__ == "__main__":
             "detunings": detunings,
             "depths": depths,
         },
-        "phase_diagram_Vortex1.pt"
+        "phase_diagram_Vortex0.pt"
     )
 
     np.savez(
-        "phase_diagram_Vortex1.npz",
+        "phase_diagram_Vortex0.npz",
         alphas=alphas.numpy(),
         detunings=detunings.numpy(),
         depths=depths.numpy(),

@@ -6,7 +6,7 @@ gas:
   grid_size: 2e-5
   adimensionalization_length: 780e-9
 boundaries:
-  cavity_detuning: [-30e6, 0, 30] # 30
+  cavity_detuning: [-30e6, 0, 20] # 30
   lattice_ramp: !eval ["linear_ramp(0, 0, 15, 10e-3)"]
 potentials:
   trap:
@@ -23,9 +23,9 @@ initial_wavefunction:
 propagation:
   imaginary_time:
     time_step: !eval [-1e-7j]
-    N_iterations: 3e3
+    N_iterations: 1e2 # ! 3e3 !
     leave_progress_bar: False
   real_time:
     time_step: 1e-6
-    final_time: 1e-2
+    final_time: 5e-3 # 10e-3
     leave_progress_bar: False
