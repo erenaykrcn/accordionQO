@@ -5,8 +5,8 @@ import scipy.sparse as sp
 rng = np.random.default_rng()
 
 
-T1_vals = np.logspace(-3, -1, 10) # s
-T2_vals = np.logspace(-3, -1, 10) # s
+T1_vals = np.logspace(-3, -1, 25) # s
+T2_vals = np.logspace(-3, -1, 25) # s
 theta_i = np.deg2rad(4)
 theta_f = np.deg2rad(14)
 s_final = 400.0   # lattice depth in recoil units
@@ -263,7 +263,17 @@ def evolve(psi0,  T_ramp1_SI, T_ramp2_SI, T_total_SI,  s_final, theta_i, theta_f
     psi_final = psi.copy()
     rho_final_SI = kL * np.abs(psi_final)**2
 
-    return states, times_SI, times, energies
+    rho = np.abs(states[-1])**2
+    psi = states[-1]
+    g, gamma3 = nonlinear_coeffs(states[-1])
+    V_now = Vtotal(T_total, T_ramp1, T_ramp2, s_final, theta_i, theta_f, sigma=sigma, t_delay=t_delay)
+    E_pot = np.sum(V_now * rho) * dx
+    d2psi = np.fft.ifft(-(k**2) * np.fft.fft(psi))
+    E_kin = np.real(np.sum(np.conj(states[-1]) * (-d2psi)) * dx)
+    E_int = 0.5 * g * np.sum(rho**2) * dx
+    energy = (E_kin + E_pot + E_int)/np.sqrt(np.sum(np.abs(states[-1])**2) * dx)
+
+    return states, times_SI, times, energy
 
 # --- lattice spacing from final angle ---
 a_lat = lamL_SI / (2 * np.sin(theta_f))
@@ -279,10 +289,10 @@ energiess = []
 final_states = []
 for T_ramp1 in T1_vals:
     for T_ramp2 in T2_vals:
-        states, times_SI, times, energies = evolve(psi0, T_ramp1, T_ramp2, (T_ramp1+T_ramp2)*1.05,
+        states, times_SI, times, energy = evolve(psi0, T_ramp1, T_ramp2, (T_ramp1+T_ramp2)*1.05,
                                                         s_final, theta_i, theta_f
                                                     )
-        energiess.append(energies[-1])
+        energiess.append(energy)
         final_states.append(states[-1])
 losses = []
 fracs = []
