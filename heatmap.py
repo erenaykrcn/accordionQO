@@ -2,22 +2,11 @@ import numpy as np
 import scipy.constants as const
 import scipy.sparse as sp
 
-rng = np.random.default_rng()
 
+T1_vals = np.logspace(-3, -1, 25) # s
+T2_vals = np.logspace(-3, -1, 25) # s
 
-#T1_vals = np.logspace(-3, -1, 25) # s
-#T2_vals = np.logspace(-3, -1, 25) # s
-T1_vals = [1e-3, 10e-3, 100e-3]
-T2_vals = [1e-3, 10e-3, 100e-3]
-
-theta_i = np.deg2rad(4)
-theta_f = np.deg2rad(14)
-s_final = 400.0   # lattice depth in recoil units
-#s_dip, w0_SI = 5, 10e-6 # Dipole trap depth and width
-omega_z = 2*np.pi*200 # Dipole trap freq.
-d_tau_SI = 1e-6 # interaction
-dt_SI = 1e-6 # RTE
-
+lambda0=780e-3
 # constants
 hbar = const.hbar
 kB = 8.617e-5 # eV/K
@@ -25,16 +14,6 @@ c = const.c
 u = const.atomic_mass
 m_Rb = 86.9091805310 * u
 a_s = 5.3e-9 # s-wave scattering length.
-hbar_SI = 1.054571817e-34
-amu = 1.66053906660e-27
-m_SI = 87 * amu
-lamL_SI = 1064e-9
-
-# recoil scales
-kL = 2 * np.pi / lamL_SI
-ER = hbar_SI**2 * kL**2 / (2 * m_SI)
-tR = hbar_SI / ER
-dt = dt_SI / tR
 
 # D1 line (795 nm)
 lam_D1 = 794.978850e-9
@@ -48,17 +27,32 @@ Gamma_D2 = 2 * np.pi * 6.0666e6
 omega0 = omega_D2
 
 # example beam parameters
-theta = 10
-P = 200e-3
-waist = 100e-6
+theta = 14
+P_total = 4
+waist = 100e-6 # radius
 lamL = 1064e-9
 kL = 2 * np.pi / lamL
 a = lamL/(2*np.sin(np.deg2rad(theta)))
+
+omega_z = 2*np.pi*200
+omega_r = 2*np.pi*35 # Hz
+d_tau_SI = 1e-6 # ITE
+dt_SI = 1e-6 # RTE
+
+# recoil scales
+ER = hbar**2 * kL**2 / (2 * m_Rb)
+tR = hbar / ER
+dt = dt_SI / tR
+
 omegaL = 2 * np.pi * c / lamL
 det = np.abs(omegaL - omega0)          # rad/s
 Delta_D1 = np.abs(omegaL - omega_D1)
 Delta_D2 = np.abs(omegaL - omega_D2)
-I0 = 2 * P / (np.pi * waist**2)
+
+P_arm = P_total / 2
+I_arm = 2 * P_arm / (np.pi * waist**2)
+# equal-power, fully interfering arms
+I0 = 4 * I_arm
 V0 = (np.pi * c**2 / 2) * I0 * (
     Gamma_D1 / (omega_D1**3 * Delta_D1) +
     Gamma_D2 / (omega_D2**3 * Delta_D2)
@@ -66,92 +60,105 @@ V0 = (np.pi * c**2 / 2) * I0 * (
 E_rec = (hbar *  np.pi / a)**2 / (2 * m_Rb)
 a90 = lamL/(2*np.sin(np.deg2rad(90)))
 E_rec90 = (hbar *  np.pi / a90)**2 / (2 * m_Rb)
-print("Accordion's Depth, V0/Erec90 =", V0 / E_rec90)
-
 k_lattice = np.pi / a
 omega_osc = 2 * (E_rec / hbar) * np.sqrt(V0 / E_rec)   # trap frequency at each site
 a_ho = np.sqrt(hbar / (m_Rb * omega_osc))               # harmonic oscillator length
 U = np.sqrt(8/np.pi) * (hbar**2 / m_Rb) * a_s / a_ho**3  # in Joules
 U_eV = U / 1.6e-19
+s = V0 / E_rec  # dimensionless depth
+J = (4 / np.sqrt(np.pi)) * E_rec * s**0.75 * np.exp(-2 * np.sqrt(s))  # in Joules
+J_eV = J / 1.6e-19
 T = 100e-9
+
+# ----------------------------
+# physical constants
+# ----------------------------
+hbar_SI = 1.054571817e-34
+amu = 1.66053906660e-27
+m_SI = 87 * amu
+lamL_SI = 1064e-9
+
 
 
 # --- Losses! ---
 a_s = 5.3e-9          # m
 K3D_SI = 1e-41         # m^6 / s
 g3D = 4 * np.pi * hbar_SI**2 * a_s / m_SI
-omega_r = 2*np.pi*40 # Hz
 N_atoms = 1e5
 a_r = np.sqrt(hbar_SI / (m_Rb * omega_r))
 # --- dimensionless baseline coefficients for psi normalized to 1 ---
 g1D_0 = (g3D / (2*np.pi*a_r**2)) / ER * (N_atoms * kL)
 Gamma3_1D_0 = (K3D_SI / (3*np.pi**2 * a_r**4)) * tR * (N_atoms * kL)**2
-"""def nonlinear_coeffs(psi):
-    rho = np.abs(psi)**2
-    n_eff = np.sum(rho**2) * dx / np.sum(rho)
-    n_eff_SI = N_atoms * kL * n_eff   # since psi normalized to 1
-    swell = (1 + 2 * a_s * n_eff_SI)**0.25
-    g_eff = g1D_0 / swell**2
-    gamma3_eff = Gamma3_1D_0 / swell**4
-    return g_eff, gamma3_eff"""
+
 
 def nonlinear_coeffs(psi):
     rho = np.abs(psi)**2
-
     norm = np.sum(rho) * dx
     n_eff = np.sum(rho**2) * dx / norm
-
     n_eff_SI = N_atoms * kL * n_eff
-
     swell = (1 + 2 * a_s * n_eff_SI)**0.25
     g_eff = g1D_0 / swell**2
     gamma3_eff = Gamma3_1D_0 / swell**4
-
     return g_eff, gamma3_eff
 
 
 
-# ITE for GS.
-nsteps = 30000
+# ----------------------------
+# dimensionless grid: x = kL * x_SI
+# ----------------------------
 Nx = 2**10
 Lx_SI = 80e-6
 Lx = kL * Lx_SI
 x = np.linspace(-Lx/2, Lx/2, Nx, endpoint=False)
 dx = x[1] - x[0]
 x_SI = x / kL
+# FFT momentum grid in dimensionless units
 k = 2 * np.pi * np.fft.fftfreq(Nx, d=dx)
 kinetic_phase = np.exp(-1j * (k**2) * dt)
+
+# ----------------------------
+# kinetic operator in recoil units
+# H/ER = -d^2/dx^2 + V + g|psi|^2
+# ----------------------------
 main = -2.0 * np.ones(Nx)
 off = 1.0 * np.ones(Nx - 1)
 lap = sp.diags([off, main, off], offsets=[-1, 0, 1], format="csr") / dx**2
 
-#Vd0_SI = s_dip*ER
-#Vdip_SI = -Vd0_SI * np.exp(-2 * x_SI**2 / w0_SI**2) 
-#V = Vdip_SI / ER
 V_SI = 0.5 * m_SI * omega_z**2 * x_SI**2
-Vdip = V_SI / ER
-V = Vdip
-
+V = V_SI / ER
+# ----------------------------
+# dimensionless interaction strength
+# g' = g_SI * kL / ER
+# For now pick a value directly as a knob
+# ----------------------------
 d_tau = d_tau_SI / tR
+nsteps = 30000
 tol = 1e-12
-sigma0_SI = 1e-8
+# ----------------------------
+# initial guess in dimensionless x
+# ----------------------------
+sigma0_SI = 5e-6
 sigma0 = kL * sigma0_SI
 psi = np.exp(-x**2 / (2 * sigma0**2)).astype(complex)
+
 def normalize_continuum(psi, dx):
     return psi / np.sqrt(np.sum(np.abs(psi)**2) * dx)
+
 psi = normalize_continuum(psi, dx)
+
 def energy_dimless(psi, lap, V, g, dx):
     kinetic = np.real(np.vdot(psi, (-lap @ psi))) * dx
     potential = np.sum(V * np.abs(psi)**2) * dx
     interaction = 0.5 * g * np.sum(np.abs(psi)**4) * dx
     return kinetic + potential + interaction
+
 energies = []
 psi0 = psi.copy()
 for step in range(nsteps):
     g, gamma = nonlinear_coeffs(psi)
     psi_old = psi.copy()
     rho = np.abs(psi)**2
-    psi = psi - d_tau * ((-lap @ psi) + V * psi + g1D_0 * rho * psi)
+    psi = psi - d_tau * ((-lap @ psi) + V * psi + g * rho * psi)
     psi = normalize_continuum(psi, dx)
     err = np.sqrt(np.sum(np.abs(psi - psi_old)**2) * dx)
 
@@ -161,18 +168,48 @@ for step in range(nsteps):
     if err < tol:
         print("Converged at step", step)
         break
+rho_SI = kL * np.abs(psi)**2
+psi0 = psi
 
 
-# Accordion's evolution
+rng = np.random.default_rng(seed=12)
+# ----------------------------
+# physical constants
+# ----------------------------
+hbar_SI = 1.054571817e-34
+amu = 1.66053906660e-27
+m_SI = 87 * amu
+lamL_SI = 1064e-9
+
+# recoil scales
+kL = 2 * np.pi / lamL_SI
+ER = hbar_SI**2 * kL**2 / (2 * m_SI)
+tR = hbar_SI / ER
+
+# ----------------------------
+# dimensionless grid: x = kL * x_SI
+# ----------------------------
 Nx = 2**10
 Lx_SI = 80e-6
 Lx = kL * Lx_SI
 x = np.linspace(-Lx/2, Lx/2, Nx, endpoint=False)
 dx = x[1] - x[0]
 x_SI = x / kL
+# FFT momentum grid in dimensionless units
 k = 2 * np.pi * np.fft.fftfreq(Nx, d=dx)
 kinetic_phase = np.exp(-1j * (k**2) * dt)
-def theta_of_t(t, T_ramp1, T_ramp2, theta_i, theta_f, t_delay=0):
+
+# ----------------------------
+# dipole trap: Gaussian beam
+# shifted so min is zero
+# ----------------------------
+#Vdip = Vdip_SI / ER
+#V_SI = 0.5 * m_SI * omega_r**2 * x_SI**2
+#Vdip = V_SI / ER
+Vdip = V
+
+
+def theta_of_t(t, T_ramp1, T_ramp2, theta_i, theta_f, t_delay=0, dS=False):
     T_ramp1 = T_ramp1+t_delay
     if t < T_ramp1:
         return theta_i
@@ -182,30 +219,32 @@ def theta_of_t(t, T_ramp1, T_ramp2, theta_i, theta_f, t_delay=0):
     else:
         return theta_f
 
-def s_of_t(t, T_ramp1, s_final):
+def s_of_t(t, T_ramp1, s_final, dS=False):
     if t < T_ramp1:
         return s_final * (t / T_ramp1)
     else:
         return s_final
 
-def phi_of_t(t, sigma):
-    return rng.normal(0, sigma)
+def phi_of_t(t, sigma, dS=False):
+    return (np.pi/2 if dS else 0) + rng.normal(0, sigma)
 
-def Vlat(t, T_ramp1, T_ramp2, s_final, theta_i, theta_f, sigma=0, t_delay=0):
-    s = s_of_t(t, T_ramp1, s_final)
-    theta = theta_of_t(t, T_ramp1, T_ramp2, theta_i, theta_f, t_delay=t_delay)
-    phi = phi_of_t(t, sigma=sigma)
+
+def Vlat(t, T_ramp1, T_ramp2, s_final, theta_i, theta_f, sigma=0, t_delay=0, dS=False):
+    s = s_of_t(t, T_ramp1, s_final, dS=dS)
+    theta = theta_of_t(t, T_ramp1, T_ramp2, theta_i, theta_f, t_delay=t_delay, dS=dS)
+    phi = phi_of_t(t, sigma=sigma, dS=dS)
     return -s * np.cos(np.sin(theta) * x + phi)**2
 
 
-def Vtotal(t,  T_ramp1, T_ramp2, s_final, theta_i, theta_f, sigma=0, t_delay=0):
-    return Vdip + Vlat(t,  T_ramp1, T_ramp2,  s_final, theta_i, theta_f, sigma=sigma, t_delay=t_delay)
+def Vtotal(t,  T_ramp1, T_ramp2, s_final, theta_i, theta_f, sigma=0, t_delay=0, dS=False):
+    return Vdip + Vlat(t,  T_ramp1, T_ramp2,  s_final, theta_i, theta_f, sigma=sigma, t_delay=t_delay, dS=dS)
 
 
-def step_gpe(psi, t, dt,  T_ramp1, T_ramp2,  s_final, theta_i, theta_f, sigma=0, t_delay=0):
+def step_gpe(psi, t, dt,  T_ramp1, T_ramp2,  s_final, theta_i, theta_f, sigma=0, 
+              t_delay=0, dS=False):
     rho = np.abs(psi)**2
     g, gamma3 = nonlinear_coeffs(psi)
-    phase1 = np.exp(-1j * (Vtotal(t, T_ramp1, T_ramp2,  s_final, theta_i, theta_f, sigma=sigma, t_delay=t_delay) + g * rho) * dt / 2
+    phase1 = np.exp(-1j * (Vtotal(t, T_ramp1, T_ramp2,  s_final, theta_i, theta_f, sigma=sigma, t_delay=t_delay, dS=dS) + g * rho) * dt / 2
                    - (gamma3 / 2) * rho**2 * dt / 2
                    )
     psi = phase1 * psi
@@ -215,14 +254,14 @@ def step_gpe(psi, t, dt,  T_ramp1, T_ramp2,  s_final, theta_i, theta_f, sigma=0,
     psi = np.fft.ifft(psi_k)
 
     rho = np.abs(psi)**2
-    phase2 = np.exp(-1j * (Vtotal(t + dt, T_ramp1, T_ramp2,  s_final, theta_i, theta_f, sigma=sigma, t_delay=t_delay) + g * rho) * dt / 2
+    phase2 = np.exp(-1j * (Vtotal(t + dt, T_ramp1, T_ramp2,  s_final, theta_i, theta_f, sigma=sigma, t_delay=t_delay, dS=dS) + g * rho) * dt / 2
                    - (gamma3 / 2) * rho**2 * dt / 2
                    )
     psi = phase2 * psi
     return psi
 
 
-def evolve(psi0,  T_ramp1_SI, T_ramp2_SI, T_total_SI,  s_final, theta_i, theta_f, sigma=0, t_delay=0):
+def evolve(psi0,  T_ramp1_SI, T_ramp2_SI, T_total_SI,  s_final, theta_i, theta_f, sigma=0, t_delay=0, dS=False):
     T_ramp1, T_ramp2 = T_ramp1_SI / tR, T_ramp2_SI / tR
     T_total = T_total_SI / tR
     Nt = int(T_total / dt)
@@ -234,8 +273,8 @@ def evolve(psi0,  T_ramp1_SI, T_ramp2_SI, T_total_SI,  s_final, theta_i, theta_f
     states = []
     for n in range(Nt):
         t = n * dt
-        psi = step_gpe(psi, t, dt, T_ramp1, T_ramp2, s_final, theta_i, theta_f, sigma=sigma, t_delay=t_delay,
-                          )
+        psi = step_gpe(psi, t, dt, T_ramp1, T_ramp2, s_final, theta_i, theta_f, sigma=sigma, t_delay=t_delay, dS=dS)
+
         if n % 100 == 0:
             t_SI = t * tR
             times.append(t)
@@ -250,53 +289,35 @@ def evolve(psi0,  T_ramp1_SI, T_ramp2_SI, T_total_SI,  s_final, theta_i, theta_f
     psi_final = psi.copy()
     rho_final_SI = kL * np.abs(psi_final)**2
 
-    rho = np.abs(psi_final)**2
-    psi = psi_final
-    g, gamma3 = nonlinear_coeffs(psi_final)
-    V_now = Vtotal(T_total, T_ramp1, T_ramp2, s_final, theta_i, theta_f, sigma=sigma, t_delay=t_delay)
-    E_pot = np.sum(V_now * rho) * dx
-    d2psi = np.fft.ifft(-(k**2) * np.fft.fft(psi))
-    E_kin = np.real(np.sum(np.conj(psi_final) * (-d2psi)) * dx)
-    E_int = 0.5 * g * np.sum(rho**2) * dx
-    energy = (E_kin + E_pot + E_int)/np.sqrt(np.sum(np.abs(psi_final)**2) * dx)
+    return states, times_SI, times
 
-    return states, times_SI, times, energy
+sigma = 0.0 #radians
+dS = False # double Sheet
+theta_i = np.deg2rad(4)
+theta_f = np.deg2rad(14)
+s_final = 400   # lattice depth in recoil units
 
-# --- lattice spacing from final angle ---
-a_lat = lamL_SI / (2 * np.sin(theta_f))
-L = x_SI.max() - x_SI.min()
-n_sites = int(np.ceil(L / a_lat)) + 2
-centers = np.arange(-n_sites//2, n_sites//2 + 1) * a_lat
-centers = centers[(centers >= x_SI.min()) & (centers <= x_SI.max())]
-edges = np.zeros(len(centers) + 1)
-edges[1:-1] = 0.5 * (centers[:-1] + centers[1:])
-edges[0] = centers[0] - a_lat / 2
-edges[-1] = centers[-1] + a_lat / 2
-energiess = []
-final_states = []
+energies, losses = ([], [])
 for T_ramp1 in T1_vals:
-    for T_ramp2 in T2_vals:
-        states, times_SI, times, energy = evolve(psi0, T_ramp1, T_ramp2, (T_ramp1+T_ramp2)*1.05,
-                                                        s_final, theta_i, theta_f
-                                                    )
-        energiess.append(energy)
-        final_states.append(states[-1])
-losses = []
-fracs = []
-for state in final_states:
-    rho = np.abs(state)**2
-    pops = np.array([
-        rho[(x_SI >= edges[j]) & (x_SI < edges[j+1])].sum()
-        for j in range(len(centers))
-    ], dtype=float)
-    pops /= pops.sum()
-    fracs.append(1-np.max(pops))
-    losses.append(1-np.sqrt(np.sum(np.abs(state)**2) * dx))
-data = {
-    'energies': energiess, 'losses': losses, 'fidelities': fracs
-}
+	for T_ramp2 in T2_vals:
+		t_delay,  T_total = 0, (T_ramp1+T_ramp2)*1.05
+		states, times_SI, times = evolve(psi0.copy(), T_ramp1, T_ramp2, T_total,
+		                                                s_final, theta_i, theta_f, t_delay=t_delay, dS=dS, sigma=sigma)
+		rho = np.abs(states[-1])**2
+		psi = states[-1]
+		g, gamma3 = nonlinear_coeffs(states[-1])
+		V_now = Vtotal(T_total, T_ramp1, T_ramp2, s_final, theta_i, theta_f, sigma=sigma, t_delay=t_delay, dS=dS)
+		E_pot = np.sum(V_now * rho) * dx
+		d2psi = np.fft.ifft(-(k**2) * np.fft.fft(psi))
+		E_kin = np.real(np.sum(np.conj(states[-1]) * (-d2psi)) * dx)
+		E_int = 0.5 * g * np.sum(rho**2) * dx
+		energy = (E_kin + E_pot + E_int)/np.sqrt(np.sum(np.abs(states[-1])**2) * dx)
+		energies.append(energy)
+		losses.append(1-np.sqrt(np.sum(np.abs(states[-1])**2) * dx))
 
+data = {
+    'energies': energies, 'losses': losses
+}
 import json
 with open(f"./results/T1_T2.json", "w") as f:
     json.dump(data, f)
-
