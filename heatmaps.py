@@ -5,16 +5,16 @@ import scipy.sparse as sp
 rng = np.random.default_rng()
 
 
-T1_vals = np.logspace(-3, -.5, 25)
-T2_vals = np.logspace(-3, -.5, 25)
-T_total = 70e-3
-theta_i = np.deg2rad(2)
-theta_f = np.deg2rad(10)
-s_final = 10.0   # lattice depth in recoil units
+T1_vals = np.logspace(-3, -.5, 2) # s
+T2_vals = np.logspace(-3, -.5, 2) # s
+T_total = 1 # s
+theta_i = np.deg2rad(4)
+theta_f = np.deg2rad(14)
+s_final = 400.0   # lattice depth in recoil units
+#s_dip, w0_SI = 5, 10e-6 # Dipole trap depth and width
+omega_z = 2*np.pi*200 # Dipole trap freq.
 
-s_dip, w0_SI = 5, 10e-6 # Dipole trap depth and width
-
-dt_SI = 10e-6 # For accordion
+dt_SI = 1e-6
 
 # constants
 hbar = const.hbar
@@ -78,7 +78,7 @@ T = 100e-9
 a_s = 5.3e-9          # m
 K3D_SI = 1e-41         # m^6 / s
 g3D = 4 * np.pi * hbar_SI**2 * a_s / m_SI
-omega_r = 2*np.pi*50 # Hz
+omega_r = 2*np.pi*40 # Hz
 N_atoms = 1e5
 a_r = np.sqrt(hbar_SI / (m_Rb * omega_r))
 # --- dimensionless baseline coefficients for psi normalized to 1 ---
@@ -96,7 +96,7 @@ def nonlinear_coeffs(psi):
 
 
 # ITE for GS.
-d_tau_SI = 0.5e-6
+d_tau_SI = 1e-6
 nsteps = 30000
 
 Nx = 2**10
@@ -110,9 +110,13 @@ kinetic_phase = np.exp(-1j * (k**2) * dt)
 main = -2.0 * np.ones(Nx)
 off = 1.0 * np.ones(Nx - 1)
 lap = sp.diags([off, main, off], offsets=[-1, 0, 1], format="csr") / dx**2
-Vd0_SI = s_dip*ER
-Vdip_SI = -Vd0_SI * np.exp(-2 * x_SI**2 / w0_SI**2) 
-V = Vdip_SI / ER
+
+#Vd0_SI = s_dip*ER
+#Vdip_SI = -Vd0_SI * np.exp(-2 * x_SI**2 / w0_SI**2) 
+#V = Vdip_SI / ER
+V_SI = 0.5 * m_SI * omega_z**2 * x_SI**2
+V = V_SI / ER
+
 d_tau = d_tau_SI / tR
 tol = 1e-12
 sigma0_SI = 5e-6
@@ -145,7 +149,6 @@ for step in range(nsteps):
 
 
 # Accordion's evolution
-
 Nx = 2**10
 Lx_SI = 80e-6
 Lx = kL * Lx_SI
@@ -265,7 +268,7 @@ energiess = []
 final_states = []
 for T_ramp1 in T1_vals:
     for T_ramp2 in T2_vals:
-        states, times_SI, times, energies = evolve(psi0, T_ramp1, T_ramp2, 1,
+        states, times_SI, times, energies = evolve(psi0, T_ramp1, T_ramp2, T_total,
                                                         s_final, theta_i, theta_f
                                                     )
         energiess.append(energies[-1])
