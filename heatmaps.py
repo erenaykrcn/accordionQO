@@ -83,13 +83,27 @@ a_r = np.sqrt(hbar_SI / (m_Rb * omega_r))
 # --- dimensionless baseline coefficients for psi normalized to 1 ---
 g1D_0 = (g3D / (2*np.pi*a_r**2)) / ER * (N_atoms * kL)
 Gamma3_1D_0 = (K3D_SI / (3*np.pi**2 * a_r**4)) * tR * (N_atoms * kL)**2
-def nonlinear_coeffs(psi):
+"""def nonlinear_coeffs(psi):
     rho = np.abs(psi)**2
     n_eff = np.sum(rho**2) * dx / np.sum(rho)
     n_eff_SI = N_atoms * kL * n_eff   # since psi normalized to 1
     swell = (1 + 2 * a_s * n_eff_SI)**0.25
     g_eff = g1D_0 / swell**2
     gamma3_eff = Gamma3_1D_0 / swell**4
+    return g_eff, gamma3_eff"""
+
+def nonlinear_coeffs(psi):
+    rho = np.abs(psi)**2
+
+    norm = np.sum(rho) * dx
+    n_eff = np.sum(rho**2) * dx / norm
+
+    n_eff_SI = N_atoms * kL * n_eff
+
+    swell = (1 + 2 * a_s * n_eff_SI)**0.25
+    g_eff = g1D_0 / swell**2
+    gamma3_eff = Gamma3_1D_0 / swell**4
+
     return g_eff, gamma3_eff
 
 
