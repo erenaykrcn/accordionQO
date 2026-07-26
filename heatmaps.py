@@ -13,8 +13,8 @@ theta_f = np.deg2rad(14)
 s_final = 400.0   # lattice depth in recoil units
 #s_dip, w0_SI = 5, 10e-6 # Dipole trap depth and width
 omega_z = 2*np.pi*200 # Dipole trap freq.
-
-dt_SI = 1e-6
+d_tau_SI = 1e-6 # interaction
+dt_SI = 1e-6 # RTE
 
 # constants
 hbar = const.hbar
@@ -96,9 +96,7 @@ def nonlinear_coeffs(psi):
 
 
 # ITE for GS.
-d_tau_SI = 1e-6
 nsteps = 30000
-
 Nx = 2**10
 Lx_SI = 80e-6
 Lx = kL * Lx_SI
@@ -116,10 +114,11 @@ lap = sp.diags([off, main, off], offsets=[-1, 0, 1], format="csr") / dx**2
 #V = Vdip_SI / ER
 V_SI = 0.5 * m_SI * omega_z**2 * x_SI**2
 Vdip = V_SI / ER
+V = Vdip
 
 d_tau = d_tau_SI / tR
 tol = 1e-12
-sigma0_SI = 5e-6
+sigma0_SI = 1e-8
 sigma0 = kL * sigma0_SI
 psi = np.exp(-x**2 / (2 * sigma0**2)).astype(complex)
 def normalize_continuum(psi, dx):
