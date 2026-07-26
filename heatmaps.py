@@ -115,7 +115,7 @@ lap = sp.diags([off, main, off], offsets=[-1, 0, 1], format="csr") / dx**2
 #Vdip_SI = -Vd0_SI * np.exp(-2 * x_SI**2 / w0_SI**2) 
 #V = Vdip_SI / ER
 V_SI = 0.5 * m_SI * omega_z**2 * x_SI**2
-V = V_SI / ER
+Vdip = V_SI / ER
 
 d_tau = d_tau_SI / tR
 tol = 1e-12
@@ -157,7 +157,6 @@ dx = x[1] - x[0]
 x_SI = x / kL
 k = 2 * np.pi * np.fft.fftfreq(Nx, d=dx)
 kinetic_phase = np.exp(-1j * (k**2) * dt)
-Vdip = Vdip_SI / ER
 def theta_of_t(t, T_ramp1, T_ramp2, theta_i, theta_f, t_delay=0):
     T_ramp1 = T_ramp1+t_delay
     if t < T_ramp1:
