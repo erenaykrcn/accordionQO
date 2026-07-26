@@ -5,8 +5,8 @@ import scipy.sparse as sp
 rng = np.random.default_rng()
 
 
-T1_vals = np.logspace(-3, -1, 2) # s
-T2_vals = np.logspace(-3, -1, 2) # s
+T1_vals = np.logspace(-3, -1, 10) # s
+T2_vals = np.logspace(-3, -1, 10) # s
 theta_i = np.deg2rad(4)
 theta_f = np.deg2rad(14)
 s_final = 400.0   # lattice depth in recoil units
