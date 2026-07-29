@@ -272,5 +272,7 @@ vort, antiv = detect_vortices_masked(
     psi,
     density_threshold=density_threshold,
 )
-print("Vortices: ", len(vort), "AntiVortices: ", len(antiv))
+
+with open("log.txt", "a") as f:
+    f.write(f"Vortices: {len(vort)} AntiVortices: {len(antiv)}\n")
 
