@@ -12,7 +12,6 @@ from multiprocessing import get_context
 
 N_vortices = 20
 
-
 _G = {}
 def make_multi_vortex_state(
     X,
