@@ -308,7 +308,7 @@ std_antiv = np.std(antivortex_counts)
 
 with open("log.txt", "a") as f:
     f.write(
-        f"T={T:.3f} "
+        f"T={T:.3f} , J={J:.3f}"
         f"<Nv>={mean_vort:.2f}±{std_vort:.2f} "
         f"<Na>={mean_antiv:.2f}±{std_antiv:.2f} "
         f"Nsamples={n_samples}\n"
