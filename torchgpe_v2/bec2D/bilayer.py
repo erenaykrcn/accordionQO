@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from typing import Callable, Union
+import math
 
 import numpy as np
 import torch
@@ -38,8 +41,14 @@ def josephson_step(
     """
     Exact Josephson evolution.
 
-    J is J/hbar in rad/s.
-    dt is in seconds.
+    Parameters
+    ----------
+    psi1, psi2
+        Layer wavefunctions.
+    J
+        J / hbar in rad/s.
+    dt
+        Physical time interval in seconds.
     """
     theta = torch.as_tensor(
         J * dt,
@@ -137,6 +146,9 @@ def propagate_bilayer(
     potentials2=None,
     leave_progress_bar=True,
 ):
+    """
+    Deterministic bilayer split-step propagation.
+    """
     potentials1 = [] if potentials1 is None else potentials1
     potentials2 = [] if potentials2 is None else potentials2
 
@@ -148,7 +160,7 @@ def propagate_bilayer(
     p1 = _prepare_potentials(gas1, potentials1)
     p2 = _prepare_potentials(gas2, potentials2)
 
-    n_steps = round(final_time / time_step)
+    n_steps = max(1, round(final_time / time_step))
     dt = final_time / n_steps
     dt_adim = dt * gas1.adim_pulse
 
@@ -163,7 +175,6 @@ def propagate_bilayer(
         time_mid = (step + 0.5) * dt
         J_mid = J_t(time_mid)
 
-        # Half Josephson step
         psi1, psi2 = josephson_step(
             gas1.psi,
             gas2.psi,
@@ -173,19 +184,15 @@ def propagate_bilayer(
         gas1.psi = psi1
         gas2.psi = psi2
 
-        # Half kinetic step
         gas1.psik = gas1.psik * kinetic_half
         gas2.psik = gas2.psik * kinetic_half
 
-        # Full local potential step
         _potential_step(gas1, dt_adim, time_mid, *p1)
         _potential_step(gas2, dt_adim, time_mid, *p2)
 
-        # Half kinetic step
         gas1.psik = gas1.psik * kinetic_half
         gas2.psik = gas2.psik * kinetic_half
 
-        # Half Josephson step
         psi1, psi2 = josephson_step(
             gas1.psi,
             gas2.psi,
@@ -195,9 +202,15 @@ def propagate_bilayer(
         gas1.psi = psi1
         gas2.psi = psi2
 
+    for potential in potentials1:
+        if hasattr(potential, "on_propagation_end"):
+            potential.on_propagation_end()
 
+    for potential in potentials2:
+        if hasattr(potential, "on_propagation_end"):
+            potential.on_propagation_end()
 
-import math
+    return bilayer
 
 
 def complex_wiener_increment(
@@ -207,32 +220,30 @@ def complex_wiener_increment(
     dt_adim,
 ):
     """
-    Complex Wiener increment satisfying
+    Complex Wiener increment satisfying approximately
 
-        <dW*(r) dW(r')> ~ dt
+        <dW*(r) dW(r')> = dt_adim
 
     before spatial-grid normalization.
     """
     re = torch.randn(shape, device=device, dtype=dtype_real)
     im = torch.randn(shape, device=device, dtype=dtype_real)
 
-    return (
-        re + 1j * im
-    ) * math.sqrt(dt_adim / 2.0)
+    return (re + 1j * im) * math.sqrt(dt_adim / 2.0)
 
 
 def apply_projector(psi, projector):
     if projector is None:
         return psi
 
-    return torch.fft.ifftn(
-        torch.fft.fftn(psi) * projector
-    )
+    projector = projector.to(device=psi.device, dtype=psi.dtype)
+    return torch.fft.ifftn(torch.fft.fftn(psi) * projector)
 
 
 def make_momentum_projector(gas, k_cut=None):
     """
     Projector defined on the unpadded real-space grid.
+
     k_cut is in TorchGPE dimensionless inverse-length units.
     """
     nx, ny = gas.psi.shape
@@ -300,46 +311,34 @@ def _evaluate_total_potential(
     return total
 
 
-def _sgpe_local_step(
-    psi,
-    total_potential,
-    gamma,
-    temperature,
-    chemical_potential,
-    dt_adim,
-    dxdy,
-    noise_mask=None,
-):
+def _scaled_relaxation_strength(
+    full_step_strength: float,
+    dt_sub: float,
+    dt_full: float,
+) -> float:
     """
-    Euler-Maruyama local SGPE step:
-
-        dpsi = -(i + gamma)(H - mu) psi dt + dW
-
-    Parameters are dimensionless in TorchGPE units.
+    Rescale an amplitude-relaxation fraction for adaptive substeps.
     """
-    deterministic = (
-        -(1j + gamma)
-        * (total_potential - chemical_potential)
-        * psi
-        * dt_adim
-    )
+    if full_step_strength <= 0:
+        return 0.0
+    if full_step_strength >= 1:
+        return 1.0
 
-    noise_prefactor = math.sqrt(
-        2.0 * gamma * temperature / dxdy
-    )
+    return 1.0 - (1.0 - full_step_strength) ** (dt_sub / dt_full)
 
-    dW = complex_wiener_increment(
-        psi.shape,
-        psi.device,
-        psi.real.dtype,
-        dt_adim,
-    ).to(psi.dtype)
 
-    if noise_mask is not None:
-        dW = noise_mask * dW
+def _state_is_valid(
+    psi: torch.Tensor,
+    reference_density: torch.Tensor,
+    density_guard_factor: float,
+) -> bool:
+    if not bool(torch.isfinite(psi).all()):
+        return False
 
-    return psi + deterministic + noise_prefactor * dW
+    max_density = torch.max(torch.abs(psi) ** 2)
+    density_scale = reference_density.max().clamp_min(1e-30)
 
+    return bool(max_density <= density_guard_factor * density_scale)
 
 
 @torch.no_grad()
@@ -351,8 +350,8 @@ def propagate_bilayer_sgpe(
     temperature,
     gamma,
     chemical_potential,
-    potentials1,
-    potentials2,
+    potentials1=None,
+    potentials2=None,
     projector1=None,
     projector2=None,
     leave_progress_bar=True,
@@ -360,11 +359,41 @@ def propagate_bilayer_sgpe(
     phase_noise_boost=1.0,
     amplitude_noise_factor=0.15,
     normalize_every=50,
+    max_retry_levels=8,
+    density_guard_factor=50.0,
+    warn_on_retry=True,
 ):
-    import math
-    import numpy as np
-    import torch
-    from tqdm.auto import tqdm
+    """
+    Robust bilayer SGPE propagation.
+
+    The public time arguments are in seconds. The GPE/SGPE update is carried
+    out in TorchGPE dimensionless time using
+
+        dt_adim = dt_SI * gas.adim_pulse.
+
+    The routine preserves the phenomenological structure of the earlier SGPE:
+    phase-dominated noise, weaker additive complex noise, momentum projection,
+    density-envelope relaxation, and periodic number stabilization.
+
+    Unstable steps are rolled back and retried with 2, 4, 8, ... substeps.
+    The stochastic amplitudes are recomputed using sqrt(dt_sub), as required.
+
+    Parameters
+    ----------
+    temperature
+        Dimensionless temperature in the same energy units as the
+        dimensionless Hamiltonian and chemical potential.
+    J
+        Either a constant J/hbar in rad/s or a callable J(t_SI).
+    max_retry_levels
+        Maximum number of binary timestep refinements. The smallest trial
+        timestep is dt / 2**max_retry_levels.
+    density_guard_factor
+        Reject a trial if its maximum density exceeds this factor times the
+        initial target peak density.
+    """
+    potentials1 = [] if potentials1 is None else potentials1
+    potentials2 = [] if potentials2 is None else potentials2
 
     gas1 = bilayer.layer1
     gas2 = bilayer.layer2
@@ -372,10 +401,15 @@ def propagate_bilayer_sgpe(
     psi1 = gas1.psi.clone()
     psi2 = gas2.psi.clone()
 
-    # Public API uses seconds; GPE evolution uses dimensionless time.
     dt_SI = float(time_step)
+    if dt_SI <= 0:
+        raise ValueError("time_step must be positive.")
+    if final_time <= 0:
+        raise ValueError("final_time must be positive.")
+
+    n_steps = max(1, int(np.ceil(float(final_time) / dt_SI)))
+    dt_SI = float(final_time) / n_steps
     dt = dt_SI * float(gas1.adim_pulse)
-    n_steps = int(np.ceil(float(final_time) / dt_SI))
 
     dx = float(gas1.dx)
     dy = float(gas1.dy)
@@ -385,25 +419,32 @@ def propagate_bilayer_sgpe(
     dtype_real = psi1.real.dtype
     dtype_cplx = psi1.dtype
 
-    Nx, Ny = psi1.shape
+    nx, ny = psi1.shape
 
-    # Momentum grid matching the actual wavefunction.
     kx = 2 * torch.pi * torch.fft.fftfreq(
-        Nx, d=dx, device=device, dtype=dtype_real
+        nx,
+        d=dx,
+        device=device,
+        dtype=dtype_real,
     )
     ky = 2 * torch.pi * torch.fft.fftfreq(
-        Ny, d=dy, device=device, dtype=dtype_real
+        ny,
+        d=dy,
+        device=device,
+        dtype=dtype_real,
     )
     KX, KY = torch.meshgrid(kx, ky, indexing="ij")
-    K2 = KX**2 + KY**2
-
-    kinetic_half = torch.exp(-0.5j * K2 * dt)
+    kinetic = 0.5 * (KX**2 + KY**2)
 
     gamma = float(gamma)
     temperature = float(temperature)
     chemical_potential = float(chemical_potential)
 
-    # Preserve the initial relaxed density profile as the reservoir target.
+    if gamma < 0:
+        raise ValueError("gamma must be non-negative.")
+    if temperature < 0:
+        raise ValueError("temperature must be non-negative.")
+
     n_target1 = torch.abs(psi1) ** 2
     n_target2 = torch.abs(psi2) ** 2
 
@@ -420,56 +461,11 @@ def propagate_bilayer_sgpe(
     N_target1 = torch.sum(n_target1) * dxdy
     N_target2 = torch.sum(n_target2) * dxdy
 
-    phase_noise_pref = (
-        phase_noise_boost
-        * math.sqrt(2.0 * gamma * temperature * dt)
-    )
-
-    amp_noise_pref = (
-        amplitude_noise_factor
-        * math.sqrt(2.0 * gamma * temperature * dt / dxdy)
-    )
-
-    for potential in potentials1:
-        potential.set_gas(gas1)
-        potential.on_propagation_begin()
-
-    for potential in potentials2:
-        potential.set_gas(gas2)
-        potential.on_propagation_begin()
-
-    def kinetic_step(psi):
-        return torch.fft.ifftn(
-            kinetic_half * torch.fft.fftn(psi)
-        )
-
-    def apply_projector_local(psi, projector):
-        if projector is None:
-            return psi
-
-        return torch.fft.ifftn(
-            projector.to(device=device, dtype=dtype_cplx)
-            * torch.fft.fftn(psi)
-        )
-
-    def complex_noise(amplitude):
-        return amplitude * (
-            torch.randn(
-                (Nx, Ny),
-                device=device,
-                dtype=dtype_real,
-            )
-            + 1j
-            * torch.randn(
-                (Nx, Ny),
-                device=device,
-                dtype=dtype_real,
-            )
-        ) / math.sqrt(2.0)
+    prepared1 = _prepare_potentials(gas1, potentials1)
+    prepared2 = _prepare_potentials(gas2, potentials2)
 
     def normalize_to_number(psi, target_number):
         number = torch.sum(torch.abs(psi) ** 2) * dxdy
-
         return psi * torch.sqrt(
             target_number / number.clamp_min(1e-30)
         )
@@ -488,146 +484,247 @@ def propagate_bilayer_sgpe(
 
         return relaxed_amplitude * torch.exp(1j * phase)
 
-    def local_energy(gas, psi, potentials, time_SI):
-        # Some TorchGPE potentials use gas.psi internally.
-        gas.psi = psi
+    def complex_noise(amplitude):
+        eta = (
+            torch.randn(
+                (nx, ny),
+                device=device,
+                dtype=dtype_real,
+            )
+            + 1j
+            * torch.randn(
+                (nx, ny),
+                device=device,
+                dtype=dtype_real,
+            )
+        ) / math.sqrt(2.0)
 
-        energy = torch.zeros(
-            psi.shape,
-            device=device,
-            dtype=dtype_real,
+        return amplitude * eta.to(dtype_cplx)
+
+    def kinetic_half_step(psi, dt_sub):
+        propagator = torch.exp(-0.5j * kinetic * dt_sub)
+        return torch.fft.ifftn(
+            propagator * torch.fft.fftn(psi)
         )
 
-        for potential in potentials:
-            value = None
+    def local_energy(gas, psi, prepared, time_SI):
+        gas.psi = psi
+        return (
+            _evaluate_total_potential(
+                gas,
+                time_SI,
+                prepared,
+            ).real
+            - chemical_potential
+        )
 
-            if hasattr(potential, "potential_function"):
-                try:
-                    value = potential.potential_function(
-                        *gas.coordinates,
-                        psi,
-                        time=time_SI,
-                    )
-                except TypeError:
-                    try:
-                        value = potential.potential_function(
-                            *gas.coordinates,
-                            psi,
-                        )
-                    except TypeError:
-                        pass
-
-            if value is None and hasattr(potential, "get_potential"):
-                try:
-                    value = potential.get_potential(
-                        *gas.coordinates,
-                        time=time_SI,
-                    )
-                except TypeError:
-                    value = potential.get_potential(
-                        *gas.coordinates
-                    )
-
-            if value is not None:
-                energy = energy + value.real
-
-        return energy - chemical_potential
-
-    iterator = range(n_steps)
-
-    if leave_progress_bar:
-        iterator = tqdm(iterator)
-
-    for step in iterator:
-        time_SI = step * dt_SI
-
-        # Kinetic half-step
-        psi1 = kinetic_step(psi1)
-        psi2 = kinetic_step(psi2)
+    def sgpe_microstep(
+        psi1_in,
+        psi2_in,
+        dt_sub,
+        dt_SI_sub,
+        time_SI,
+    ):
+        psi1_sub = kinetic_half_step(psi1_in, dt_sub)
+        psi2_sub = kinetic_half_step(psi2_in, dt_sub)
 
         H1 = local_energy(
-            gas1, psi1, potentials1, time_SI
+            gas1,
+            psi1_sub,
+            prepared1,
+            time_SI,
         )
         H2 = local_energy(
-            gas2, psi2, potentials2, time_SI
+            gas2,
+            psi2_sub,
+            prepared2,
+            time_SI,
         )
 
         J_now = J(time_SI) if callable(J) else J
         J_now = float(J_now)
 
-        psi1_old = psi1
-        psi2_old = psi2
+        psi1_old = psi1_sub
+        psi2_old = psi2_sub
 
-        # Same explicit dissipative/Josephson step as SGPE_v2.
-        psi1 = psi1 + (
+        psi1_sub = psi1_old + (
             -(1j + gamma) * H1 * psi1_old
             + (1j + gamma) * J_now * psi2_old
-        ) * dt
+        ) * dt_sub
 
-        psi2 = psi2 + (
+        psi2_sub = psi2_old + (
             -(1j + gamma) * H2 * psi2_old
             + (1j + gamma) * J_now * psi1_old
-        ) * dt
+        ) * dt_sub
 
-        # Phase-dominated thermal noise localized inside the cloud.
+        phase_noise_pref = (
+            phase_noise_boost
+            * math.sqrt(
+                2.0 * gamma * temperature * dt_sub
+            )
+        )
+
+        amp_noise_pref = (
+            amplitude_noise_factor
+            * math.sqrt(
+                2.0 * gamma * temperature * dt_sub / dxdy
+            )
+        )
+
         xi1 = torch.randn(
-            (Nx, Ny), device=device, dtype=dtype_real
+            (nx, ny),
+            device=device,
+            dtype=dtype_real,
         )
         xi2 = torch.randn(
-            (Nx, Ny), device=device, dtype=dtype_real
+            (nx, ny),
+            device=device,
+            dtype=dtype_real,
         )
 
-        psi1 = psi1 * torch.exp(
+        psi1_sub = psi1_sub * torch.exp(
             1j * reservoir_mask1 * phase_noise_pref * xi1
         )
-        psi2 = psi2 * torch.exp(
+        psi2_sub = psi2_sub * torch.exp(
             1j * reservoir_mask2 * phase_noise_pref * xi2
         )
 
-        # Weaker additive noise allows density holes and vortex cores.
-        psi1 = (
-            psi1
-            + reservoir_mask1
-            * complex_noise(amp_noise_pref)
+        psi1_sub = (
+            psi1_sub
+            + reservoir_mask1 * complex_noise(amp_noise_pref)
         )
-        psi2 = (
-            psi2
-            + reservoir_mask2
-            * complex_noise(amp_noise_pref)
+        psi2_sub = (
+            psi2_sub
+            + reservoir_mask2 * complex_noise(amp_noise_pref)
         )
 
-        # Second kinetic half-step
-        psi1 = kinetic_step(psi1)
-        psi2 = kinetic_step(psi2)
+        psi1_sub = kinetic_half_step(psi1_sub, dt_sub)
+        psi2_sub = kinetic_half_step(psi2_sub, dt_sub)
 
-        psi1 = apply_projector_local(psi1, projector1)
-        psi2 = apply_projector_local(psi2, projector2)
+        psi1_sub = apply_projector(psi1_sub, projector1)
+        psi2_sub = apply_projector(psi2_sub, projector2)
 
-        # Stabilize the cloud envelope while preserving its phase.
-        psi1 = density_relax(
-            psi1,
+        alpha_sub = _scaled_relaxation_strength(
+            density_relax_strength,
+            dt_sub,
+            dt,
+        )
+
+        psi1_sub = density_relax(
+            psi1_sub,
             n_target1,
-            density_relax_strength,
+            alpha_sub,
         )
-        psi2 = density_relax(
-            psi2,
+        psi2_sub = density_relax(
+            psi2_sub,
             n_target2,
-            density_relax_strength,
+            alpha_sub,
         )
 
-        if normalize_every and step % normalize_every == 0:
+        return psi1_sub, psi2_sub
+
+    iterator = trange(
+        n_steps,
+        leave=leave_progress_bar,
+        desc="Bilayer SGPE propagation",
+    )
+
+    retry_count = 0
+    max_retry_used = 0
+
+    for step in iterator:
+        time_SI = step * dt_SI
+
+        psi1_checkpoint = psi1.clone()
+        psi2_checkpoint = psi2.clone()
+
+        accepted = False
+
+        for retry_level in range(max_retry_levels + 1):
+            n_substeps = 2**retry_level
+            dt_sub = dt / n_substeps
+            dt_SI_sub = dt_SI / n_substeps
+
+            psi1_trial = psi1_checkpoint.clone()
+            psi2_trial = psi2_checkpoint.clone()
+
+            valid = True
+
+            for substep in range(n_substeps):
+                substep_time_SI = (
+                    time_SI
+                    + (substep + 0.5) * dt_SI_sub
+                )
+
+                psi1_trial, psi2_trial = sgpe_microstep(
+                    psi1_trial,
+                    psi2_trial,
+                    dt_sub,
+                    dt_SI_sub,
+                    substep_time_SI,
+                )
+
+                valid1 = _state_is_valid(
+                    psi1_trial,
+                    n_target1,
+                    density_guard_factor,
+                )
+                valid2 = _state_is_valid(
+                    psi2_trial,
+                    n_target2,
+                    density_guard_factor,
+                )
+
+                if not valid1 or not valid2:
+                    valid = False
+                    break
+
+            if valid:
+                psi1 = psi1_trial
+                psi2 = psi2_trial
+                accepted = True
+
+                if retry_level > 0:
+                    retry_count += 1
+                    max_retry_used = max(
+                        max_retry_used,
+                        retry_level,
+                    )
+
+                    if warn_on_retry:
+                        print(
+                            f"SGPE warning: step {step} accepted "
+                            f"after {n_substeps} substeps."
+                        )
+
+                break
+
+        if not accepted:
+            max_n1 = float(
+                torch.nan_to_num(
+                    torch.abs(psi1_checkpoint) ** 2
+                ).max().detach().cpu()
+            )
+            max_n2 = float(
+                torch.nan_to_num(
+                    torch.abs(psi2_checkpoint) ** 2
+                ).max().detach().cpu()
+            )
+
+            raise RuntimeError(
+                "SGPE step remained unstable after all retry levels. "
+                f"step={step}, "
+                f"time={time_SI:.6e} s, "
+                f"smallest dt_adim={dt / 2**max_retry_levels:.3e}, "
+                f"checkpoint max densities=({max_n1:.3e}, {max_n2:.3e})."
+            )
+
+        if normalize_every and (step + 1) % normalize_every == 0:
             psi1 = normalize_to_number(psi1, N_target1)
             psi2 = normalize_to_number(psi2, N_target2)
 
-        if not torch.isfinite(psi1).all():
-            raise RuntimeError(
-                f"Layer 1 became non-finite at step {step}"
-            )
-
-        if not torch.isfinite(psi2).all():
-            raise RuntimeError(
-                f"Layer 2 became non-finite at step {step}"
-            )
+        gas1.psi = psi1
+        gas2.psi = psi2
 
     gas1.psi = psi1
     gas2.psi = psi2
@@ -640,6 +737,10 @@ def propagate_bilayer_sgpe(
         if hasattr(potential, "on_propagation_end"):
             potential.on_propagation_end()
 
+    if warn_on_retry and retry_count > 0:
+        print(
+            f"SGPE completed with {retry_count} retried main steps; "
+            f"largest refinement was 2**{max_retry_used} substeps."
+        )
+
     return bilayer
-
-

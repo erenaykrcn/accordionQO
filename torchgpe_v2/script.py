@@ -264,15 +264,53 @@ propagate_bilayer_sgpe(
 )
 bec, psi = bilayer.layer1, bec.psi
 
-psi_np = psi.detach().cpu().numpy()
-phase = np.angle(psi_np)
-density = np.abs(psi_np)**2
+# ----------------------------
 
-vort, antiv = detect_vortices_masked(
-    psi,
-    density_threshold=density_threshold,
-)
+# Sampling
+
+# ----------------------------
+sample_time = 5 * thermalization_time
+sample_interval = thermalization_time / 10      # 10 samples per thermalization time
+n_samples = int(sample_time / sample_interval)
+vortex_counts = []
+antivortex_counts = []
+for _ in range(n_samples):
+
+    propagate_bilayer_sgpe(
+        bilayer,
+        sample_interval,
+        1e-6,
+        J,
+        T,
+        gamma,
+        mu,
+        pots1,
+        pots2,
+        P1,
+        P2,
+        leave_progress_bar=False,
+    )
+    psi = bilayer.layer1.psi
+    vort, antiv = detect_vortices_masked(
+
+        psi,
+
+        density_threshold=density_threshold,
+
+    )
+    vortex_counts.append(len(vort))
+    antivortex_counts.append(len(antiv))
+
+mean_vort = np.mean(vortex_counts)
+std_vort = np.std(vortex_counts)
+mean_antiv = np.mean(antivortex_counts)
+std_antiv = np.std(antivortex_counts)
 
 with open("log.txt", "a") as f:
-    f.write(f"Vortices: {len(vort)} AntiVortices: {len(antiv)}\n")
+    f.write(
+        f"T={T:.3f} "
+        f"<Nv>={mean_vort:.2f}±{std_vort:.2f} "
+        f"<Na>={mean_antiv:.2f}±{std_antiv:.2f} "
+        f"Nsamples={n_samples}\n"
+    )
 
