@@ -1,13 +1,19 @@
 import numpy as np
 import torch
+import argparse
 import matplotlib.pyplot as plt
 
-from torchgpe.bec2D import Gas
-from torchgpe.bec2D.potentials import Trap, Contact
 from torchgpe.utils.potentials import LinearPotential, NonLinearPotential
 
-import torch
-import argparse
+from bec2D.gas import Gas
+from bec2D.bilayer import (
+    BilayerGas, propagate_bilayer,
+    propagate_bilayer_sgpe,
+    make_momentum_projector,
+)
+
+from bec2D.potentials import Trap, Contact
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--T", type=float, required=True)
@@ -18,7 +24,8 @@ parser.add_argument("--thermalization_time", type=float, required=True)
 parser.add_argument("--J", type=float, required=True)
 args = parser.parse_args()
 T, gamma, seed, density_threshold, thermalization_time, J = args.T, args.gamma, args.seed, args.treshold, args.thermalization_time, args.J
-omegar = 20
+omegar, grid_size, N_particles =50, 50e-6, int(5e4)
+
 
 def make_multi_vortex_state(
     X,
@@ -80,14 +87,14 @@ def make_multi_vortex_state(
 # -----------------------------
 # System setup
 # -----------------------------
-def get_BEC(N_vortices, N_iterations, co_rot=False, omegar=20):
+def get_BEC(N_vortices, N_iterations, co_rot=False, omega=50, grid_size=50e-6, N_particles=int(5e4)):
     bec = Gas(
-            N_particles=2e5,
-            grid_size=20e-6,          # 30 microns box size
+            N_particles=N_particles,
+            grid_size=grid_size,          # 30 microns box size
             #n_points=2**9,            # try 2**10 if you want more resolution
     )
     # Harmonic trap + contact interactions
-    trap = Trap(omegax=omegar, omegay=omegar)
+    trap = Trap(omegax=omega, omegay=omega)
     contact = Contact(a_s=100)
     
     vortices = []
@@ -104,30 +111,14 @@ def get_BEC(N_vortices, N_iterations, co_rot=False, omegar=20):
     psi_final = bec.psi.clone()
     return bec, psi_final
 
-
-bec, psi_final = get_BEC(0, int(200), True, omegar=omegar)
-
-from bec2D.gas import Gas
-import numpy as np
-import torch
-import matplotlib.pyplot as plt
-
-from bec2D.bilayer import (
-    BilayerGas, propagate_bilayer,
-    propagate_bilayer_sgpe,
-    make_momentum_projector,
-)
-
-from bec2D.potentials import Trap, Contact
-
-def make_bilayer(psi1, psi2, seed=0, omegar=20):
+def make_bilayer(psi1, psi2, seed=0, omegar=50, grid_size=50e-6, N_particles=int(5e4)):
     torch.manual_seed(seed)
     np.random.seed(seed)
 
     gas_kwargs = dict(
-        N_particles=int(5e4),
+        N_particles=N_particles,
         N_grid=256,
-        grid_size=40e-6,
+        grid_size=grid_size,
         normalize_on_assignment=False,
     )
 
@@ -257,15 +248,15 @@ def detect_vortices_masked(psi, density_threshold=0.01):
     return vort, antiv
 
 
-bilayer, pots1, pots2, P1, P2 = make_bilayer(psi_final, psi_final, seed)  # create fresh gases
+bec, psi_init = get_BEC(0, int(200), True, omega=omegar, grid_size=grid_size, N_particles=N_particles)
+bilayer, pots1, pots2, P1, P2 = make_bilayer(psi_init, psi_init, seed, omegar=omegar, grid_size=grid_size, N_particles=N_particles)  # create fresh gases
 mu = estimate_mu(bilayer.layer1, pots1)
 # Thermalize
 propagate_bilayer_sgpe(
             bilayer, thermalization_time, 1e-6, J, T, gamma, mu,
             pots1, pots2, P1, P2, leave_progress_bar=False,
 )
-bec, psi = bilayer.layer1, bec.psi
-
+bec, psi = bilayer.layer1, bilayer.layer1.psi
 
 
 # ----------------------------
