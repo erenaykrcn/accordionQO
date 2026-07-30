@@ -18,7 +18,7 @@ parser.add_argument("--thermalization_time", type=float, required=True)
 parser.add_argument("--J", type=float, required=True)
 args = parser.parse_args()
 T, gamma, seed, density_threshold, thermalization_time, J = args.T, args.gamma, args.seed, args.treshold, args.thermalization_time, args.J
-omegar, grid_size = 20, 50e-6
+omegar = 20
 
 def make_multi_vortex_state(
     X,
@@ -83,7 +83,7 @@ def make_multi_vortex_state(
 def get_BEC(N_vortices, N_iterations, co_rot=False, omegar=20):
     bec = Gas(
             N_particles=2e5,
-            grid_size=grid_size,          # 30 microns box size
+            grid_size=20e-6,          # 30 microns box size
             #n_points=2**9,            # try 2**10 if you want more resolution
     )
     # Harmonic trap + contact interactions
@@ -127,7 +127,7 @@ def make_bilayer(psi1, psi2, seed=0, omegar=20):
     gas_kwargs = dict(
         N_particles=int(5e4),
         N_grid=256,
-        grid_size=grid_size,
+        grid_size=40e-6,
         normalize_on_assignment=False,
     )
 
