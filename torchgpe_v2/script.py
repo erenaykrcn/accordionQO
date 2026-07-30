@@ -80,10 +80,10 @@ def make_multi_vortex_state(
 # -----------------------------
 # System setup
 # -----------------------------
-def get_BEC(N_vortices, N_iterations, co_rot=False, omegar=20, grid_size=grid_size):
+def get_BEC(N_vortices, N_iterations, co_rot=False, omegar=20):
     bec = Gas(
             N_particles=2e5,
-            grid_size=grid_size,          # 30 microns box size
+            grid_size=20e-6,          # 30 microns box size
             #n_points=2**9,            # try 2**10 if you want more resolution
     )
     # Harmonic trap + contact interactions
