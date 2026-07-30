@@ -257,14 +257,19 @@ propagate_bilayer_sgpe(
             pots1, pots2, P1, P2, leave_progress_bar=False,
 )
 bec, psi = bilayer.layer1, bilayer.layer1.psi
+vort, antiv = detect_vortices_masked(
+        psi,
+        density_threshold=density_threshold,
 
+)
+print(len(vort), len(antiv))
 
 # ----------------------------
 
 # Sampling
 
 # ----------------------------
-sample_time = 5 * thermalization_time
+"""sample_time = 5 * thermalization_time
 sample_interval = thermalization_time / 10      # 10 samples per thermalization time
 n_samples = int(sample_time / sample_interval)
 vortex_counts = []
@@ -303,6 +308,7 @@ with open("log.txt", "a") as f:
         f"T={T:.3f} , J={J:.3f}"
         f"<Nv>={mean_vort:.2f}±{std_vort:.2f} "
         f"<Na>={mean_antiv:.2f}±{std_antiv:.2f} "
-        f"Nsamples={n_samples}\n"
+        f"Nsamples={n_samples}"
     )
 
+"""
