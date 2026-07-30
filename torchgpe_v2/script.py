@@ -18,7 +18,7 @@ parser.add_argument("--thermalization_time", type=float, required=True)
 parser.add_argument("--J", type=float, required=True)
 args = parser.parse_args()
 T, gamma, seed, density_threshold, thermalization_time, J = args.T, args.gamma, args.seed, args.treshold, args.thermalization_time, args.J
-omegar = 100
+omegar, grid_size = 50, 50e-6
 
 def make_multi_vortex_state(
     X,
@@ -105,7 +105,7 @@ def get_BEC(N_vortices, N_iterations, co_rot=False, omegar=20):
     return bec, psi_final
 
 
-bec, psi_final = get_BEC(0, int(200), True, omegar=omegar)
+bec, psi_final = get_BEC(0, int(1000), True, omegar=omegar, grid_size=grid_size)
 
 from bec2D.gas import Gas
 import numpy as np
@@ -120,14 +120,14 @@ from bec2D.bilayer import (
 
 from bec2D.potentials import Trap, Contact
 
-def make_bilayer(psi1, psi2, seed=0, omegar=20):
+def make_bilayer(psi1, psi2, seed=0, omegar=50, grid_size=50e-6):
     torch.manual_seed(seed)
     np.random.seed(seed)
 
     gas_kwargs = dict(
         N_particles=int(5e4),
         N_grid=256,
-        grid_size=40e-6,
+        grid_size=grid_size,
         normalize_on_assignment=False,
     )
 
@@ -257,7 +257,8 @@ def detect_vortices_masked(psi, density_threshold=0.01):
     return vort, antiv
 
 
-bilayer, pots1, pots2, P1, P2 = make_bilayer(psi_final, psi_final, seed)  # create fresh gases
+bilayer, pots1, pots2, P1, P2 = make_bilayer(psi_final, psi_final, 
+    seed, omegar=omegar, grid_size=grid_size)  # create fresh gases
 mu = estimate_mu(bilayer.layer1, pots1)
 # Thermalize
 propagate_bilayer_sgpe(
