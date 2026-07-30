@@ -263,6 +263,12 @@ vort, antiv = detect_vortices_masked(
 
 )
 print(len(vort), len(antiv))
+with open("log.txt", "a") as f:
+    f.write(
+        f"T={T:.3f} , J={J:.3f}"
+        f"<Nv>={len(vort):.2f}"
+        f"<Na>={len(antiv):.2f}"
+    )
 
 # ----------------------------
 
