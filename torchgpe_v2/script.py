@@ -18,7 +18,7 @@ parser.add_argument("--thermalization_time", type=float, required=True)
 parser.add_argument("--J", type=float, required=True)
 args = parser.parse_args()
 T, gamma, seed, density_threshold, thermalization_time, J = args.T, args.gamma, args.seed, args.treshold, args.thermalization_time, args.J
-omegar = 20
+omegar = 100
 
 def make_multi_vortex_state(
     X,
