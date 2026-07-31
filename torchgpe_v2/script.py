@@ -263,20 +263,20 @@ vort, antiv = detect_vortices_masked(
         density_threshold=density_threshold,
 
 )
-print(len(vort), len(antiv))
-with open("log.txt", "a") as f:
-    f.write(
-        f"T={T:.3f} , J={J:.3f}"
-        f"<Nv>={len(vort):.2f}"
-        f"<Na>={len(antiv):.2f} \n"
-    )
+#print(len(vort), len(antiv))
+#with open("log.txt", "a") as f:
+#    f.write(
+#        f"T={T:.3f} , J={J:.3f}"
+#        f"<Nv>={len(vort):.2f}"
+#        f"<Na>={len(antiv):.2f} \n"
+#    )
 
 # ----------------------------
 
 # Sampling
 
 # ----------------------------
-"""sample_time = 5 * thermalization_time
+sample_time = 5 * thermalization_time
 sample_interval = thermalization_time / 10      # 10 samples per thermalization time
 n_samples = int(sample_time / sample_interval)
 vortex_counts = []
@@ -315,7 +315,5 @@ with open("log.txt", "a") as f:
         f"T={T:.3f} , J={J:.3f}"
         f"<Nv>={mean_vort:.2f}±{std_vort:.2f} "
         f"<Na>={mean_antiv:.2f}±{std_antiv:.2f} "
-        f"Nsamples={n_samples}"
+        f"Nsamples={n_samples} \n"
     )
-
-"""
