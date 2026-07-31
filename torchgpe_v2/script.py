@@ -23,7 +23,7 @@ parser.add_argument("--thermalization_time", type=float, required=True)
 parser.add_argument("--J", type=float, required=True)
 args = parser.parse_args()
 T, gamma, seed, density_threshold, thermalization_time, J = args.T, args.gamma, args.seed, args.treshold, args.thermalization_time, args.J
-omegar, grid_size, N_particles = 30, 50e-6, int(150e4)
+omegar, grid_size, N_particles = 30, 50e-6, int(150e3)
 dt = 1e-6
 mu = 10
 
