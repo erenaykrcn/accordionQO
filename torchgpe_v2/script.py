@@ -11,7 +11,6 @@ from bec2D.bilayer import (
     propagate_bilayer_sgpe,
     make_momentum_projector,
 )
-
 from bec2D.potentials import Trap, Contact
 
 
@@ -24,8 +23,9 @@ parser.add_argument("--thermalization_time", type=float, required=True)
 parser.add_argument("--J", type=float, required=True)
 args = parser.parse_args()
 T, gamma, seed, density_threshold, thermalization_time, J = args.T, args.gamma, args.seed, args.treshold, args.thermalization_time, args.J
-omegar, grid_size, N_particles =50, 50e-6, int(5e4)
-
+omegar, grid_size, N_particles = 50, 50e-6, int(5e4)
+dt = 1e-6
+mu = 10
 
 def make_multi_vortex_state(
     X,
@@ -250,10 +250,11 @@ def detect_vortices_masked(psi, density_threshold=0.01):
 
 bec, psi_init = get_BEC(0, int(200), True, omega=omegar, grid_size=grid_size, N_particles=N_particles)
 bilayer, pots1, pots2, P1, P2 = make_bilayer(psi_init, psi_init, seed, omegar=omegar, grid_size=grid_size, N_particles=N_particles)  # create fresh gases
-mu = estimate_mu(bilayer.layer1, pots1)
+#mu = estimate_mu(bilayer.layer1, pots1)
+#print(mu)
 # Thermalize
 propagate_bilayer_sgpe(
-            bilayer, thermalization_time, 1e-6, J, T, gamma, mu,
+            bilayer, thermalization_time, dt, J, T, gamma, mu,
             pots1, pots2, P1, P2, leave_progress_bar=False,
 )
 bec, psi = bilayer.layer1, bilayer.layer1.psi
@@ -267,7 +268,7 @@ with open("log.txt", "a") as f:
     f.write(
         f"T={T:.3f} , J={J:.3f}"
         f"<Nv>={len(vort):.2f}"
-        f"<Na>={len(antiv):.2f}"
+        f"<Na>={len(antiv):.2f} \n"
     )
 
 # ----------------------------
