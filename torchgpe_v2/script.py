@@ -223,32 +223,51 @@ def detect_vortices_from_phase(phase):
     # Return plaquette-center coordinates in array-index units
     return vort + 0.5, antiv + 0.5
 
-def detect_vortices_masked(psi, density_threshold=0.01):
+def detect_vortices_masked(psi, density_mask):
     psi = psi.detach().cpu().numpy() if torch.is_tensor(psi) else np.asarray(psi)
 
-    density = np.abs(psi)**2
     phase = np.angle(psi)
-
     vort, antiv = detect_vortices_from_phase(phase)
-    # Density at each plaquette, normalized to peak density
-    plaquette_density = 0.25 * (
-        density[:-1, :-1]
-        + density[1:, :-1]
-        + density[1:, 1:]
-        + density[:-1, 1:]
-    )
-    mask = plaquette_density > density_threshold * density.max()
 
     vort_i = np.floor(vort).astype(int)
     antiv_i = np.floor(antiv).astype(int)
 
-    vort = vort[mask[vort_i[:, 0], vort_i[:, 1]]] if len(vort) else vort
-    antiv = antiv[mask[antiv_i[:, 0], antiv_i[:, 1]]] if len(antiv) else antiv
+    if len(vort):
+        valid = (
+            (vort_i[:, 0] >= 0)
+            & (vort_i[:, 0] < density_mask.shape[0])
+            & (vort_i[:, 1] >= 0)
+            & (vort_i[:, 1] < density_mask.shape[1])
+        )
+        vort = vort[valid]
+        vort_i = vort_i[valid]
+        vort = vort[density_mask[vort_i[:, 0], vort_i[:, 1]]]
+
+    if len(antiv):
+        valid = (
+            (antiv_i[:, 0] >= 0)
+            & (antiv_i[:, 0] < density_mask.shape[0])
+            & (antiv_i[:, 1] >= 0)
+            & (antiv_i[:, 1] < density_mask.shape[1])
+        )
+        antiv = antiv[valid]
+        antiv_i = antiv_i[valid]
+        antiv = antiv[density_mask[antiv_i[:, 0], antiv_i[:, 1]]]
 
     return vort, antiv
 
 
 bec, psi_init = get_BEC(0, int(200), True, omega=omegar, grid_size=grid_size, N_particles=N_particles)
+density0 = torch.abs(psi_init)**2
+density0 = density0.cpu().numpy()
+plaquette_density = 0.25 * (
+    density0[:-1, :-1]
+    + density0[1:, :-1]
+    + density0[1:, 1:]
+    + density0[:-1, 1:]
+)
+density_mask = plaquette_density > density_threshold * density0.max()
+
 bilayer, pots1, pots2, P1, P2 = make_bilayer(psi_init, psi_init, seed, omegar=omegar, grid_size=grid_size, N_particles=N_particles)  # create fresh gases
 #mu = estimate_mu(bilayer.layer1, pots1)
 #print(mu)
@@ -258,11 +277,6 @@ propagate_bilayer_sgpe(
             pots1, pots2, P1, P2, leave_progress_bar=False,
 )
 bec, psi = bilayer.layer1, bilayer.layer1.psi
-vort, antiv = detect_vortices_masked(
-        psi,
-        density_threshold=density_threshold,
-
-)
 #print(len(vort), len(antiv))
 #with open("log.txt", "a") as f:
 #    f.write(
@@ -299,8 +313,7 @@ for _ in range(n_samples):
     psi = bilayer.layer1.psi
     vort, antiv = detect_vortices_masked(
         psi,
-        density_threshold=density_threshold,
-
+        density_mask
     )
     vortex_counts.append(len(vort))
     antivortex_counts.append(len(antiv))
