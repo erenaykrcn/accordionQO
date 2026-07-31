@@ -290,8 +290,8 @@ bec, psi = bilayer.layer1, bilayer.layer1.psi
 # Sampling
 
 # ----------------------------
-sample_time = 5 * thermalization_time
-sample_interval = thermalization_time / 10      # 10 samples per thermalization time
+sample_time = 2 * thermalization_time
+sample_interval = thermalization_time / 100      # 100 samples per thermalization time
 n_samples = int(sample_time / sample_interval)
 vortex_counts = []
 antivortex_counts = []
