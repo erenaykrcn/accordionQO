@@ -1,0 +1,216 @@
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+
+from torchgpe.bec2D import Gas
+from torchgpe.bec2D.potentials import Trap, Contact
+from torchgpe.utils import parse_config
+
+import torch
+
+
+def make_multi_vortex_state(
+    X,
+    Y,
+    sigma_adim,
+    vortices,
+    adim_length=1.0,
+    background="gaussian",
+    eps=1e-12,
+):
+    device = X.device
+    real_dtype = X.dtype
+    complex_dtype = torch.complex64 if real_dtype == torch.float32 else torch.complex128
+
+    # Background envelope
+    if background == "gaussian":
+        r2 = X**2 + Y**2
+        amplitude = torch.exp(-r2 / (2 * sigma_adim**2))
+    elif background == "uniform":
+        amplitude = torch.ones_like(X)
+    else:
+        raise ValueError("background must be 'gaussian' or 'uniform'")
+
+    psi0 = amplitude.to(complex_dtype)
+
+    for v in vortices:
+        X0 = v.get("X0", 0.0) / adim_length
+        Y0 = v.get("Y0", 0.0) / adim_length
+        charge = int(v.get("charge", 1))
+        core_adim = float(v.get("core_adim", 1e-6))
+
+        Xs = X - X0
+        Ys = Y - Y0
+        r2_local = Xs**2 + Ys**2
+        r_local = torch.sqrt(r2_local + core_adim**2)
+
+        # Unit-charge vortex phase factor
+        z = (Xs + 1j * Ys) / (r_local + eps)
+
+        # Optional core suppression
+        core_amp = r_local
+
+        if charge > 0:
+            vortex_factor = (core_amp * z) ** charge
+        elif charge < 0:
+            vortex_factor = (core_amp * torch.conj(z)) ** (-charge)
+        else:
+            vortex_factor = torch.ones_like(psi0)
+
+        psi0 = psi0 * vortex_factor.to(complex_dtype)
+
+    # Normalize
+    norm = torch.sqrt(torch.sum(torch.abs(psi0)**2))
+    psi0 = psi0 / (norm + eps)
+
+    return psi0
+
+
+# -----------------------------
+# System setup
+# -----------------------------
+def get_BEC(N_vortices, N_iterations, co_rot=False, omega=50, grid_size=50e-6, N_particles=int(5e4)):
+    bec = Gas(
+            N_particles=N_particles,
+            grid_size=grid_size,          # 30 microns box size
+            #n_points=2**9,            # try 2**10 if you want more resolution
+    )
+    # Harmonic trap + contact interactions
+    trap = Trap(omegax=omega, omegay=omega)
+    contact = Contact(a_s=100)
+    
+    vortices = []
+    for i in range(N_vortices):
+        vortices.append({"X0": np.random.random()*10-5, 
+                         "Y0": np.random.random()*10-5, 
+                         "charge": +1 if np.random.random()>0.5 else (+1 if co_rot else -1), "core_adim": 1e-3})
+    bec.psi = make_multi_vortex_state(bec.X, bec.Y, sigma_adim=6e-6 / bec.adim_length, vortices=vortices)
+    psi_final = bec.psi.clone()
+    bec.ground_state(
+            potentials=[trap, contact],
+            N_iterations=N_iterations,
+    )
+    psi_final = bec.psi.clone()
+    return bec, psi_final
+
+
+import sys
+sys.path.append("../../")
+from torchgpe_v2.bec2D.gas import Gas
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+
+from torchgpe_v2.bec2D.bilayer import (
+    BilayerGas, propagate_bilayer,
+    propagate_bilayer_sgpe,
+    make_momentum_projector,
+)
+
+from torchgpe_v2.bec2D.potentials import Trap, Contact
+
+def make_bilayer(psi1, psi2, seed=0, omegar=50, grid_size=50e-6, N_particles=int(5e4)):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    gas_kwargs = dict(
+        N_particles=N_particles,
+        N_grid=256,
+        grid_size=grid_size,
+        normalize_on_assignment=False,
+    )
+
+    gas1 = Gas(**gas_kwargs)
+    gas2 = Gas(**gas_kwargs)
+
+    gas1.psi = psi1.to(gas1.complex_dtype)
+    gas2.psi = psi2.to(gas2.complex_dtype)
+
+    bilayer = BilayerGas(gas1, gas2)
+
+    potentials1 = [
+        Trap(omegax=omegar, omegay=omegar),
+        Contact(a_s=100, a_orth=1e-6),
+    ]
+    potentials2 = [
+        Trap(omegax=omegar, omegay=omegar),
+        Contact(a_s=100, a_orth=1e-6),
+    ]
+
+    projector1 = make_momentum_projector(gas1)
+    projector2 = make_momentum_projector(gas2)
+
+    return bilayer, potentials1, potentials2, projector1, projector2
+
+
+from torchgpe.utils.potentials import LinearPotential, NonLinearPotential
+
+def J_ramp(t, ramp_time=1e-3, J_initial = 2 * np.pi * 40, J_final = 2 * np.pi * 2):
+    s = np.clip(t / ramp_time, 0.0, 1.0)
+    smooth = 3 * s**2 - 2 * s**3
+
+    return J_initial + smooth * (
+        J_final - J_initial
+    )
+
+def estimate_mu(gas, potentials):
+    psi = gas.psi
+    nx, ny = psi.shape
+
+    kx = 2 * torch.pi * torch.fft.fftfreq(
+        nx, d=float(gas.dx),
+        device=gas.device, dtype=gas.float_dtype
+    )
+    ky = 2 * torch.pi * torch.fft.fftfreq(
+        ny, d=float(gas.dy),
+        device=gas.device, dtype=gas.float_dtype
+    )
+    KX, KY = torch.meshgrid(kx, ky, indexing="ij")
+
+    kinetic = torch.fft.ifftn(
+        0.5 * (KX**2 + KY**2) * torch.fft.fftn(psi)
+    )
+
+    Vpsi = torch.zeros_like(psi)
+
+    for p in potentials:
+        p.set_gas(gas)
+        p.on_propagation_begin()
+
+        if isinstance(p, LinearPotential):
+            V = p.get_potential(*gas.coordinates)
+        elif isinstance(p, NonLinearPotential):
+            V = p.potential_function(*gas.coordinates, psi)
+        else:
+            continue
+
+        Vpsi += V * psi
+
+    Hpsi = kinetic + Vpsi
+
+    norm = torch.sum(torch.abs(psi)**2) * gas.dx * gas.dy
+    mu = (
+        torch.sum(torch.conj(psi) * Hpsi).real
+        * gas.dx * gas.dy
+        / norm
+    )
+
+    return mu.item()
+
+
+
+def get_thermal_state(T, gamma=0.01, J=0, dt=1e-6, thermalization_time=30e-3,
+        omegar=50, grid_size=40e-6, N_particles=int(100e3), imaginary_steps=int(500)
+    ):
+
+    bec, psi_init = get_BEC(0, imaginary_steps, True, omega=omegar, grid_size=grid_size, N_particles=N_particles)
+    bilayer, pots1, pots2, P1, P2 = make_bilayer(psi_init, psi_init, 1, omegar=omegar, N_particles=N_particles,  grid_size=grid_size)  # create fresh gases
+    mu = estimate_mu(bilayer.layer1, pots1)
+    propagate_bilayer_sgpe(
+                bilayer, thermalization_time, dt, J
+        , T, gamma, mu,
+                pots1, pots2, P1, P2, leave_progress_bar=False,
+    )
+    psi_Thermal = bilayer.layer1.psi.clone()
+
+    return psi_Thermal
