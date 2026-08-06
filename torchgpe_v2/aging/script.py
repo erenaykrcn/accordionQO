@@ -7,8 +7,7 @@ config = parse_config("config.yaml")
 
 temperature, N_particles1, N_particles2 = 60, int(100e3), int(50e3)
 gamma, grid_size, omegar  = 0.01, 40e-3, 50
-#dt, thermalization_time, final_time1, final_time2 = 1e-6, 30e-3, 20e-3, 50e-3
-dt, thermalization_time, final_time1, final_time2 = 1e-6, 10e-3, 10e-3, 25e-3
+dt, thermalization_time, final_time1, final_time2 = 1e-6, 30e-3, 20e-3, 50e-3
 monitor_every = 100
 
 lattice_ramp = config["boundaries"]["lattice_ramp"]
