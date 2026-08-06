@@ -15,7 +15,7 @@ config = parse_config("config.yaml")
 
 def get_SO_SGPE_state(init_state, temperature, N_particles, lattice, 
     final_time, detuning=-10e6, 
-    omegar=50, grid_size=40e-6, dt=1e-6, gamma=0.01, J=0):
+    omegar=50, grid_size=40e-6, dt=1e-6, gamma=0.01, J=0, monitor_every=10):
 
     def make_multi_vortex_state(
         X,
@@ -159,7 +159,7 @@ def get_SO_SGPE_state(init_state, temperature, N_particles, lattice,
                 leave_progress_bar=False,
                 
                 monitor_cavity=cavity,
-                monitor_every=1,
+                monitor_every=monitor_every,
     ) 
 
     return result, cavity_monitor

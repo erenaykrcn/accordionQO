@@ -7,7 +7,9 @@ config = parse_config("config.yaml")
 
 temperature, N_particles1, N_particles2 = 60, int(100e3), int(50e3)
 gamma, grid_size, omegar  = 0.01, 40e-3, 50
-dt, thermalization_time, final_time1, final_time2 = 1e-6, 30e-3, 20e-3, 50e-3
+#dt, thermalization_time, final_time1, final_time2 = 1e-6, 30e-3, 20e-3, 50e-3
+dt, thermalization_time, final_time1, final_time2 = 1e-6, 10e-3, 10e-3, 25e-3
+monitor_every = 100
 
 lattice_ramp = config["boundaries"]["lattice_ramp"]
 lattice_static = config["boundaries"]["lattice_static"]
@@ -25,13 +27,13 @@ psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt,
 # Pump to induce weak SO.
 result1, cavity_monitor1 = get_SO_SGPE_state(psi_thermal, temperature, N_particles1, 
 	lattice_ramp, final_time1, detuning = detuning, J=J,
-    omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma)
+    omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma, monitor_every=monitor_every)
 psi_SO = result1['states'][-1]
 
 # N-> N/2 Quench, re-organization and equilibration of vortices.
 result2, cavity_monitor2 = get_SO_SGPE_state(psi_SO, temperature, N_particles2, 
 	lattice_static, final_time2, detuning = detuning,
-    omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma)
+    omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma, monitor_every=monitor_every)
 
 
 save_path = save_quench_run(
