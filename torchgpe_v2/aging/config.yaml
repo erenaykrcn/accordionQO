@@ -7,8 +7,8 @@ gas:
   adimensionalization_length: 780e-9
 boundaries:
   cavity_detuning: [-30e6, 0, 30] # 30
-  lattice_ramp: !eval ["linear_ramp(0, 0, 15, 15e-3)"]
-  lattice_static: !eval ["linear_ramp(15 , 15, 15, 1e-2)"]
+  lattice_ramp: !eval ["linear_ramp(0, 0, 25, 25e-3)"]
+  lattice_static: !eval ["linear_ramp(25 , 25, 25, 1e-2)"]
 potentials:
   trap:
     omegax: 50
@@ -28,5 +28,5 @@ propagation:
     leave_progress_bar: False
   real_time:
     time_step: 1e-6
-    final_time: 20e-3
+    final_time: 50e-3
     leave_progress_bar: False
