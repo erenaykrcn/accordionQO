@@ -29,7 +29,7 @@ omegar = args.omegar
 thermalization_time = args.thermalization_time
 
 
-dt, gamma = 1e-6, 0.01 
+dt, gamma = 1e-6, 0.0
 final_time1, final_time2 = 25e-3, 50e-3
 J, detuning, imaginary_steps = 0, -10e6, 500
 monitor_every = 500
