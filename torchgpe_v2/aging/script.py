@@ -108,7 +108,7 @@ psi_SO = result1['states'][-1]
 
 
 
-gamma = 0.01
+gamma = 0.00
 # N-> N/2 Quench, re-organization and equilibration of vortices.
 result2, cavity_monitor2 = get_SO_SGPE_state(psi_SO, temperature, N_particles2, 
 	lattice_static, final_time2, detuning = detuning,
