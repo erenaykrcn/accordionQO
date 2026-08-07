@@ -341,6 +341,8 @@ def _state_is_valid(
     return bool(max_density <= density_guard_factor * density_scale)
 
 
+
+
 @torch.no_grad()
 def propagate_bilayer_sgpe(
     bilayer,
@@ -359,7 +361,11 @@ def propagate_bilayer_sgpe(
     atom_number2=None,
     monitor_cavity=None,
     monitor_every=10,
+    evolve_layer2=False,
 ):
+    if not evolve_layer2:
+        print('propagating one layer')
+
     """
     Number-conserving projected SGPE compatible with TorchGPE's
     unit-normalized wavefunction convention.
@@ -517,6 +523,25 @@ def propagate_bilayer_sgpe(
         + torch.sum(torch.abs(psi2) ** 2)
     ) * cell_area
 
+
+    target_norm1 = (
+        torch.sum(torch.abs(psi1) ** 2) * cell_area
+    )
+
+    def normalize_layer1(psi):
+        current_norm = (
+            torch.sum(torch.abs(psi) ** 2) * cell_area
+        )
+
+        scale = torch.sqrt(
+            target_norm1
+            / current_norm.real.clamp_min(1e-30)
+        )
+
+        return psi * scale
+
+
+
     # -------------------------------------------------------------
     # Momentum-space kinetic operator
     # -------------------------------------------------------------
@@ -542,10 +567,7 @@ def propagate_bilayer_sgpe(
         potentials1,
     )
 
-    prepared2 = _prepare_potentials(
-        gas2,
-        potentials2,
-    )
+    prepared2 = _prepare_potentials(gas2, potentials2) if evolve_layer2 else None
 
     def project_momentum(field, projector):
         if projector is None:
@@ -645,34 +667,58 @@ def propagate_bilayer_sgpe(
         psi2_now,
         time_SI,
     ):
-        Kpsi1, Kpsi2 = grand_potential_gradient(
+        J_now = J(time_SI) if callable(J) else J
+        J_now = float(J_now)
+
+        Hpsi1 = gp_action(
+            gas1,
             psi1_now,
-            psi2_now,
+            prepared1,
             time_SI,
         )
 
-        # Hamiltonian part.
-        hamiltonian1 = -1j * Kpsi1
-        hamiltonian2 = -1j * Kpsi2
+        if evolve_layer2:
+            Hpsi2 = gp_action(
+                gas2,
+                psi2_now,
+                prepared2,
+                time_SI,
+            )
 
-        # Number-conserving dissipative part.
-        damping1 = -gamma * tangent_projection(
-            psi1_now,
-            Kpsi1,
+            Kpsi1 = (
+                Hpsi1
+                - chemical_potential * psi1_now
+                - J_now * psi2_now
+            )
+
+            Kpsi2 = (
+                Hpsi2
+                - chemical_potential * psi2_now
+                - J_now * psi1_now
+            )
+        else:
+            # Single-layer evolution: no Josephson term
+            Kpsi1 = Hpsi1 - chemical_potential * psi1_now
+            Kpsi2 = None
+
+        drift1 = (
+            -1j * Kpsi1
+            - gamma * tangent_projection(psi1_now, Kpsi1)
         )
 
-        damping2 = -gamma * tangent_projection(
-            psi2_now,
-            Kpsi2,
+        drift1 = project_momentum(drift1, projector1)
+
+        if not evolve_layer2:
+            return drift1, None
+
+        drift2 = (
+            -1j * Kpsi2
+            - gamma * tangent_projection(psi2_now, Kpsi2)
         )
 
-        drift1 = hamiltonian1 + damping1
-        drift2 = hamiltonian2 + damping2
+        drift2 = project_momentum(drift2, projector2)
 
-        return (
-            project_momentum(drift1, projector1),
-            project_momentum(drift2, projector2),
-        )
+        return drift1, drift2
 
     def complex_normal():
         """
@@ -755,8 +801,12 @@ def propagate_bilayer_sgpe(
 
     # Apply the momentum projector to the initial fields.
     psi1 = project_momentum(psi1, projector1)
-    psi2 = project_momentum(psi2, projector2)
-    psi1, psi2 = normalize_total(psi1, psi2)
+
+    if evolve_layer2:
+        psi2 = project_momentum(psi2, projector2)
+        psi1, psi2 = normalize_total(psi1, psi2)
+    else:
+        psi1 = normalize_layer1(psi1)
 
     iterator = trange(
         n_steps,
@@ -789,22 +839,25 @@ def propagate_bilayer_sgpe(
             gaussian2,
         )
 
+
         drift1, drift2 = deterministic_drift(
             psi1,
             psi2,
             time_SI,
         )
 
-        # Stochastic Heun predictor.
         psi1_predictor = project_momentum(
             psi1 + drift1 * dt + noise1,
             projector1,
         )
 
-        psi2_predictor = project_momentum(
-            psi2 + drift2 * dt + noise2,
-            projector2,
-        )
+        if evolve_layer2:
+            psi2_predictor = project_momentum(
+                psi2 + drift2 * dt + noise2,
+                projector2,
+            )
+        else:
+            psi2_predictor = psi2
 
         drift1_predictor, drift2_predictor = deterministic_drift(
             psi1_predictor,
@@ -822,13 +875,6 @@ def propagate_bilayer_sgpe(
             gaussian1,
         )
 
-        noise2_predictor = stochastic_increment(
-            psi2_predictor,
-            N_atoms2,
-            projector2,
-            gaussian2,
-        )
-
         psi1 = project_momentum(
             psi1
             + 0.5 * (drift1 + drift1_predictor) * dt
@@ -836,23 +882,39 @@ def propagate_bilayer_sgpe(
             projector1,
         )
 
-        psi2 = project_momentum(
-            psi2
-            + 0.5 * (drift2 + drift2_predictor) * dt
-            + 0.5 * (noise2 + noise2_predictor),
-            projector2,
-        )
+        if evolve_layer2:
+            noise2_predictor = stochastic_increment(
+                psi2_predictor,
+                N_atoms2,
+                projector2,
+                gaussian2,
+            )
 
-        # This is a numerical constraint correction, not periodic
-        # grand-canonical particle-number resetting.
-        psi1, psi2 = normalize_total(psi1, psi2)
+            psi2 = project_momentum(
+                psi2
+                + 0.5 * (drift2 + drift2_predictor) * dt
+                + 0.5 * (noise2 + noise2_predictor),
+                projector2,
+            )
+            
+        # Numerical norm correction only.
+        if evolve_layer2:
+            psi1, psi2 = normalize_total(psi1, psi2)
+        else:
+            psi1 = normalize_layer1(psi1)
 
-        finite = (
-            torch.isfinite(psi1.real).all()
-            and torch.isfinite(psi1.imag).all()
-            and torch.isfinite(psi2.real).all()
-            and torch.isfinite(psi2.imag).all()
-        )
+        if evolve_layer2:
+            finite = (
+                torch.isfinite(psi1.real).all()
+                and torch.isfinite(psi1.imag).all()
+                and torch.isfinite(psi2.real).all()
+                and torch.isfinite(psi2.imag).all()
+            )
+        else:
+            finite = (
+                torch.isfinite(psi1.real).all()
+                and torch.isfinite(psi1.imag).all()
+            )
 
         if not bool(finite):
             raise RuntimeError(
@@ -861,14 +923,11 @@ def propagate_bilayer_sgpe(
                 "Reduce time_step or lower the projector cutoff."
             )
 
-        gas1.psi = psi1
-        gas2.psi = psi2
-
-
         if monitor_cavity is not None and step % monitor_every == 0:
             states.append(psi1.clone())
             t_now = (step + 1) * dt_SI
             cavity_times.append(t_now)
+
             cavity_alpha.append(
                 monitor_cavity.get_alpha(
                     gas1.psi,
@@ -876,8 +935,9 @@ def propagate_bilayer_sgpe(
                 ).detach().cpu()
             )
 
-    gas1.psi = psi1
-    gas2.psi = psi2
+        gas1.psi = psi1
+        if evolve_layer2:
+            gas2.psi = psi2
 
     for potential in potentials1:
         if hasattr(potential, "on_propagation_end"):

@@ -101,7 +101,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-from torchgpe_v2.bec2D.bilayer import (
+from torchgpe_v2.bec2D.bilayer_v4 import (
     BilayerGas, propagate_bilayer,
     propagate_bilayer_sgpe,
     make_momentum_projector,
@@ -196,7 +196,6 @@ def estimate_mu(gas, potentials):
     )
 
     return mu.item()
-
 
 
 def get_thermal_state(T, gamma=0.01, J=0, dt=1e-6, thermalization_time=30e-3,
