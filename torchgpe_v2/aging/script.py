@@ -77,21 +77,22 @@ psi_thermal = torch.from_numpy(psi)
 result1, cavity_monitor1 = get_SO_SGPE_state(psi_thermal, temperature, N_particles1, 
 	lattice_ramp, final_time1, detuning = detuning, J=J,
     omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma, monitor_every=monitor_every)
-psi_SO = result1['states'][-1]
+
 
 # N-> N/2 Quench, re-organization and equilibration of vortices.
+"""psi_SO = result1['states'][-1]
 result2, cavity_monitor2 = get_SO_SGPE_state(psi_SO, temperature, N_particles2, 
 	lattice_static, final_time2, detuning = detuning,
     omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma, monitor_every=monitor_every)
-
+"""
 
 save_path = save_quench_run(
     output_dir="results",
     temperature=temperature,
     result1=result1,
-    result2=result2,
+    result2=result1, #!!
     cavity_monitor1=cavity_monitor1,
-    cavity_monitor2=cavity_monitor2,
+    cavity_monitor2=cavity_monitor1, #!!
     N_particles1=N_particles1,
     N_particles2=N_particles2,
     gamma=gamma,
