@@ -11,35 +11,7 @@ def to_numpy(x):
     return np.asarray(x)
 
 
-def get_next_run_path(
-    output_dir,
-    temperature,
-    prefix="SO_quench",
-):
-    """
-    Return the first unused filename:
-
-        SO_quench_T40_id000.hdf5
-        SO_quench_T40_id001.hdf5
-        ...
-    """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    run_id = 0
-
-    while True:
-        filename = (
-            f"{prefix}_T{temperature:g}_id{run_id:03d}.hdf5"
-        )
-        path = output_dir / filename
-
-        if not path.exists():
-            return path, run_id
-
-        run_id += 1
-
-
+    
 def save_quench_run(
     output_dir,
     temperature,
@@ -67,6 +39,7 @@ def save_quench_run(
     output_path, run_id = get_next_quench_path(
         output_dir=output_dir,
         temperature=temperature,
+        gamma=gamma,
         N_particles1=N_particles1,
         N_particles2=N_particles2,
         thermalization_time=thermalization_time,
@@ -191,6 +164,7 @@ def get_next_state_path(
 def get_next_quench_path(
     output_dir,
     temperature,
+    gamma,
     N_particles1,
     N_particles2,
     thermalization_time,
@@ -209,6 +183,7 @@ def get_next_quench_path(
         filename = (
             f"{prefix}"
             f"_T{temperature:g}"
+            f"_g{gamma:g}"
             f"_N1{N_particles1:g}"
             f"_N2{N_particles2:g}"
             f"_tth{thermalization_time:g}"
