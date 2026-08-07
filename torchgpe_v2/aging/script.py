@@ -5,7 +5,7 @@ from utils import save_quench_run, save_state
 
 config = parse_config("config.yaml")
 
-temperature, N_particles1, N_particles2 = 20, int(200e3), int(50e3)
+temperature, N_particles1, N_particles2 = 40, int(200e3), int(50e3)
 gamma, grid_size, omegar  = 0.01, 60e-3, 30
 dt, thermalization_time, final_time1, final_time2 = 1e-6, 30e-3, 20e-3, 30e-3
 monitor_every = 500
