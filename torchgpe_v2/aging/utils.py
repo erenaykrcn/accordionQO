@@ -31,6 +31,7 @@ def save_quench_run(
     final_time2,
     J,
     detuning,
+    VP,
     prefix="SO_quench",
 ):
     """
@@ -47,6 +48,7 @@ def save_quench_run(
         grid_size=grid_size,
         J=J,
         detuning=detuning,
+        VP=VP,
         prefix=prefix,
     )
 
@@ -172,6 +174,7 @@ def get_next_quench_path(
     grid_size,
     J,
     detuning,
+    VP,
     prefix="SO_quench",
 ):
     output_dir = Path(output_dir)
@@ -191,6 +194,7 @@ def get_next_quench_path(
             f"_L{grid_size:g}"
             f"_J{J:g}"
             f"_D{detuning:g}"
+            f"_VP{VP:g}"
             f"_id{run_id:03d}.hdf5"
         )
 

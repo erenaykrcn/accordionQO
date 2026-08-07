@@ -13,6 +13,7 @@ parser.add_argument("--omegar", type=float, required=True)
 parser.add_argument("--thermalization_time", type=float, required=True)
 parser.add_argument("--gamma1", type=float, required=True)
 parser.add_argument("--gamma2", type=float, required=True)
+parser.add_argument("--VP", type=float, required=True)
 args = parser.parse_args()
 
 
@@ -28,6 +29,7 @@ N_particles1 = args.N_particles1
 N_particles2 = args.N_particles2
 grid_size = args.grid_size
 omegar = args.omegar
+VP = args.VP
 gamma1, gamma2 = args.gamma1, args.gamma2
 thermalization_time = args.thermalization_time
 
@@ -36,11 +38,17 @@ dt = 1e-6
 final_time1, final_time2 = 50e-3, 50e-3
 J, detuning, imaginary_steps = 0, -10e6, 500
 monitor_every = 500
-
-lattice_ramp = config["boundaries"]["lattice_ramp"]
-lattice_static = config["boundaries"]["lattice_static"]
-
 J, detuning, imaginary_steps = 0, -10e6, int(500)
+
+
+VP = float(VP)
+def lattice_ramp(t):
+    t_ramp = VP * 1e-3
+    if t >= t_ramp:
+        return VP
+    return VP * (t / t_ramp)
+def lattice_static(t):
+    return VP
 
 
 ### Thermal State, Begin
@@ -136,4 +144,5 @@ save_path = save_quench_run(
     final_time2=final_time2,
     J=J,
     detuning=detuning,
+    VP=VP
 )
