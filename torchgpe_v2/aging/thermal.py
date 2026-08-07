@@ -198,6 +198,65 @@ def estimate_mu(gas, potentials):
     return mu.item()
 
 
+def phase_wrap(x):
+    return (x + np.pi) % (2 * np.pi) - np.pi
+
+def detect_vortices_from_phase(phase):
+    # Plaquettes only; no periodic wrap across boundaries
+    th00 = phase[:-1, :-1]
+    th10 = phase[1:, :-1]
+    th11 = phase[1:, 1:]
+    th01 = phase[:-1, 1:]
+
+    winding = (
+        phase_wrap(th10 - th00)
+        + phase_wrap(th11 - th10)
+        + phase_wrap(th01 - th11)
+        + phase_wrap(th00 - th01)
+    ) / (2 * np.pi)
+
+    winding_int = np.rint(winding).astype(int)
+
+    vort = np.argwhere(winding_int == 1)
+    antiv = np.argwhere(winding_int == -1)
+
+    # Return plaquette-center coordinates in array-index units
+    return vort + 0.5, antiv + 0.5
+
+def detect_vortices_masked(psi, density_mask):
+    psi = psi.detach().cpu().numpy() if torch.is_tensor(psi) else np.asarray(psi)
+
+    phase = np.angle(psi)
+    vort, antiv = detect_vortices_from_phase(phase)
+
+    vort_i = np.floor(vort).astype(int)
+    antiv_i = np.floor(antiv).astype(int)
+
+    if len(vort):
+        valid = (
+            (vort_i[:, 0] >= 0)
+            & (vort_i[:, 0] < density_mask.shape[0])
+            & (vort_i[:, 1] >= 0)
+            & (vort_i[:, 1] < density_mask.shape[1])
+        )
+        vort = vort[valid]
+        vort_i = vort_i[valid]
+        vort = vort[density_mask[vort_i[:, 0], vort_i[:, 1]]]
+
+    if len(antiv):
+        valid = (
+            (antiv_i[:, 0] >= 0)
+            & (antiv_i[:, 0] < density_mask.shape[0])
+            & (antiv_i[:, 1] >= 0)
+            & (antiv_i[:, 1] < density_mask.shape[1])
+        )
+        antiv = antiv[valid]
+        antiv_i = antiv_i[valid]
+        antiv = antiv[density_mask[antiv_i[:, 0], antiv_i[:, 1]]]
+
+    return vort, antiv
+
+
 def get_thermal_state(T, gamma=0.01, J=0, dt=1e-6, thermalization_time=30e-3,
         omegar=50, grid_size=40e-6, N_particles=int(100e3), imaginary_steps=int(500)
     ):

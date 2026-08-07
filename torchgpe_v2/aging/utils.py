@@ -146,3 +146,81 @@ def save_quench_run(
     print(f"Saved run {run_id} to: {output_path}")
 
     return output_path
+
+
+
+def get_next_state_path(
+    output_dir,
+    temperature,
+    thermalization_time,
+    omegar,
+    grid_size,
+    N_particles,
+    prefix="thermal_state",
+):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    run_id = 0
+
+    while True:
+        filename = (
+            f"{prefix}"
+            f"_T{temperature:g}"
+            f"_tth{thermalization_time:g}"
+            f"_wr{omegar:g}"
+            f"_L{grid_size:g}"
+            f"_N{N_particles:g}"
+            f"_id{run_id:03d}.hdf5"
+        )
+
+        path = output_dir / filename
+
+        if not path.exists():
+            return path, run_id
+
+        run_id += 1
+
+
+def save_state(
+    output_dir,
+    temperature,
+    state,
+    *,
+    thermalization_time,
+    omegar,
+    grid_size,
+    N_particles,
+    prefix="thermal_state",
+):
+    output_path, run_id = get_next_state_path(
+        output_dir=output_dir,
+        temperature=temperature,
+        thermalization_time=thermalization_time,
+        omegar=omegar,
+        grid_size=grid_size,
+        N_particles=N_particles,
+        prefix=prefix,
+    )
+
+    state = to_numpy(state)
+
+    with h5py.File(output_path, "x") as h5file:
+        h5file.create_dataset(
+            "state",
+            data=state,
+            compression="gzip",
+            compression_opts=4,
+            shuffle=True,
+        )
+
+        h5file.attrs["run_id"] = run_id
+        h5file.attrs["temperature"] = temperature
+        h5file.attrs["thermalization_time"] = thermalization_time
+        h5file.attrs["omegar"] = omegar
+        h5file.attrs["grid_size"] = grid_size
+        h5file.attrs["N_particles"] = N_particles
+
+    print(f"Saved run {run_id} to: {output_path}")
+
+    return output_path

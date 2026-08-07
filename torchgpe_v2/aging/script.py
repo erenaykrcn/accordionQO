@@ -1,14 +1,14 @@
 from thermal import get_thermal_state
 from SGPE_SO import get_SO_SGPE_state
 from torchgpe.utils import parse_config
-from utils import save_quench_run
+from utils import save_quench_run, save_state
 
 config = parse_config("config.yaml")
 
-temperature, N_particles1, N_particles2 = 60, int(100e3), int(50e3)
-gamma, grid_size, omegar  = 0.01, 50e-3, 50
+temperature, N_particles1, N_particles2 = 30, int(100e3), int(50e3)
+gamma, grid_size, omegar  = 0.01, 60e-3, 30
 dt, thermalization_time, final_time1, final_time2 = 1e-6, 30e-3, 20e-3, 30e-3
-monitor_every = 100
+monitor_every = 500
 
 lattice_ramp = config["boundaries"]["lattice_ramp"]
 lattice_static = config["boundaries"]["lattice_static"]
@@ -23,8 +23,18 @@ psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt,
 	imaginary_steps=imaginary_steps
     )
 
+save_state(
+    output_dir="results",
+    temperature=temperature,
+    state=psi_thermal.psi,
+    thermalization_time=thermalization_time,
+    omegar=omegar,
+    grid_size=grid_size,
+    N_particles=N_particles1,
+)
+
 # Pump to induce weak SO.
-result1, cavity_monitor1 = get_SO_SGPE_state(psi_thermal, temperature, N_particles1, 
+"""result1, cavity_monitor1 = get_SO_SGPE_state(psi_thermal, temperature, N_particles1, 
 	lattice_ramp, final_time1, detuning = detuning, J=J,
     omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma, monitor_every=monitor_every)
 psi_SO = result1['states'][-1]
@@ -53,4 +63,4 @@ save_path = save_quench_run(
     final_time2=final_time2,
     J=J,
     detuning=detuning,
-)
+)"""
