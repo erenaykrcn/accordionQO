@@ -261,7 +261,8 @@ def get_thermal_state(T, gamma=0.01, J=0, dt=1e-6, thermalization_time=30e-3,
         omegar=50, grid_size=40e-6, N_particles=int(100e3), imaginary_steps=int(500)
     ):
 
-    bec, psi_init = get_BEC(0, imaginary_steps, True, omega=omegar, grid_size=grid_size, N_particles=N_particles)
+    bec, psi_init = get_BEC(0, imaginary_steps, True, omega=omegar, grid_size=grid_size, 
+        N_particles=N_particles)
     bilayer, pots1, pots2, P1, P2 = make_bilayer(psi_init, psi_init, 1, omegar=omegar, N_particles=N_particles,  grid_size=grid_size)  # create fresh gases
     mu = estimate_mu(bilayer.layer1, pots1)
     propagate_bilayer_sgpe(

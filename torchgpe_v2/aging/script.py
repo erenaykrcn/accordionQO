@@ -1,3 +1,15 @@
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--temperature", type=float, required=True)
+parser.add_argument("--N_particles1", type=int, required=True)
+parser.add_argument("--N_particles2", type=int, required=True)
+parser.add_argument("--grid_size", type=float, required=True)
+parser.add_argument("--omegar", type=float, required=True)
+parser.add_argument("--thermalization_time", type=float, required=True)
+args = parser.parse_args()
+
+
 from thermal import get_thermal_state
 from SGPE_SO import get_SO_SGPE_state
 from torchgpe.utils import parse_config
@@ -5,10 +17,21 @@ from utils import save_quench_run, save_state
 
 config = parse_config("config.yaml")
 
-temperature, N_particles1, N_particles2 = 40, int(50e3), int(50e3)
-gamma, grid_size, omegar  = 0.01, 60e-3, 30
-dt, thermalization_time, final_time1, final_time2 = 1e-6, 30e-3, 20e-3, 30e-3
+
+temperature = args.temperature
+N_particles1 = args.N_particles1
+N_particles2 = args.N_particles2
+grid_size = args.grid_size
+omegar = args.omegar
+thermalization_time = args.thermalization_time
+gamma = 0.01
+dt = 1e-6
+final_time1 = 20e-3
+final_time2 = 30e-3
 monitor_every = 500
+J = 0
+detuning = -10e6
+imaginary_steps = 500
 
 lattice_ramp = config["boundaries"]["lattice_ramp"]
 lattice_static = config["boundaries"]["lattice_static"]
