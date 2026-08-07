@@ -29,7 +29,7 @@ omegar = args.omegar
 thermalization_time = args.thermalization_time
 
 
-dt, gamma = 1e-6, 0.01 ## !! 0.01
+dt, gamma = 1e-6, 0.01 
 final_time1, final_time2 = 25e-3, 50e-3
 J, detuning, imaginary_steps = 0, -10e6, 500
 monitor_every = 500
@@ -40,7 +40,6 @@ lattice_static = config["boundaries"]["lattice_static"]
 J, detuning, imaginary_steps = 0, -10e6, int(500)
 
 
-"""
 ### Thermal State, Begin
 psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt, 
 	thermalization_time=thermalization_time,
@@ -57,10 +56,9 @@ save_state(
     N_particles=N_particles1,
 )
 ### Thermal State, END
-"""
 
-"""
-results_dir = Path("./results")
+
+"""results_dir = Path("./results")
 latest_path = max(
     results_dir.glob(
         f"thermal_state_T{temperature:g}"
@@ -70,15 +68,15 @@ latest_path = max(
         f"_N{N_particles1:g}"
         "_id*.hdf5"
     ),"""
-    #key=lambda p: int(re.search(r"_id(\d+)\.hdf5$", p.name).group(1))
+#    key=lambda p: int(re.search(r"_id(\d+)\.hdf5$", p.name).group(1))
 """)
 path =  str(latest_path)
 with h5py.File(path, "r") as f:
     psi = f['state'][:]
-psi_thermal = torch.from_numpy(psi)
-"""
+psi_thermal = torch.from_numpy(psi)"""
 
-results_dir = Path("./results")
+
+"""results_dir = Path("./results")
 latest_path = max(
     results_dir.glob(
         f"SO_quench"
@@ -92,23 +90,24 @@ latest_path = max(
         f"_D{detuning:g}"
         "_id*.hdf5"
     ),
-    key=lambda p: int(
-        re.search(r"_id(\d+)\.hdf5$", p.name).group(1)
-    )
+    key=lambda p: int("""
+#        re.search(r"_id(\d+)\.hdf5$", p.name).group(1)
+"""    )
 )
 with h5py.File(latest_path, "r") as f:
     psi_SO = torch.from_numpy(
         f["states/pump_ramp"][-1]
     )
-
+"""
 
 # Pump to induce weak SO.
-#result1, cavity_monitor1 = get_SO_SGPE_state(psi_thermal, temperature, N_particles1, 
-#	lattice_ramp, final_time1, detuning = detuning, J=J,
-#    omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma, monitor_every=monitor_every)
+result1, cavity_monitor1 = get_SO_SGPE_state(psi_thermal, temperature, N_particles1, 
+	lattice_ramp, final_time1, detuning = detuning, J=J,
+    omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma, monitor_every=monitor_every)
+psi_SO = result1['states'][-1]
+
 
 # N-> N/2 Quench, re-organization and equilibration of vortices.
-#psi_SO = result1['states'][-1]
 result2, cavity_monitor2 = get_SO_SGPE_state(psi_SO, temperature, N_particles2, 
 	lattice_static, final_time2, detuning = detuning,
     omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma, monitor_every=monitor_every)
@@ -117,9 +116,9 @@ result2, cavity_monitor2 = get_SO_SGPE_state(psi_SO, temperature, N_particles2,
 save_path = save_quench_run(
     output_dir="results",
     temperature=temperature,
-    result1=result2,#!!
+    result1=result1,
     result2=result2, 
-    cavity_monitor1=cavity_monitor2, #!!
+    cavity_monitor1=cavity_monitor1,
     cavity_monitor2=cavity_monitor2, 
     N_particles1=N_particles1,
     N_particles2=N_particles2,
