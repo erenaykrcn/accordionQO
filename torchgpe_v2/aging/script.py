@@ -11,7 +11,8 @@ parser.add_argument("--N_particles2", type=int, required=True)
 parser.add_argument("--grid_size", type=float, required=True)
 parser.add_argument("--omegar", type=float, required=True)
 parser.add_argument("--thermalization_time", type=float, required=True)
-parser.add_argument("--gamma", type=float, required=True)
+parser.add_argument("--gamma1", type=float, required=True)
+parser.add_argument("--gamma2", type=float, required=True)
 args = parser.parse_args()
 
 
