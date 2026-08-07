@@ -17,35 +17,30 @@ from utils import save_quench_run, save_state
 
 config = parse_config("config.yaml")
 
-
 temperature = args.temperature
 N_particles1 = args.N_particles1
 N_particles2 = args.N_particles2
 grid_size = args.grid_size
 omegar = args.omegar
 thermalization_time = args.thermalization_time
-gamma = 0.01
-dt = 1e-6
-final_time1 = 20e-3
-final_time2 = 30e-3
+
+
+dt, gamma = 1e-6, 0.01
+final_time1, final_time2 = 20e-3, 30e-3
+J, detuning, imaginary_steps = 0, -10e6, 500
 monitor_every = 500
-J = 0
-detuning = -10e6
-imaginary_steps = 500
 
 lattice_ramp = config["boundaries"]["lattice_ramp"]
 lattice_static = config["boundaries"]["lattice_static"]
 
 J, detuning, imaginary_steps = 0, -10e6, int(500)
 
-
 # Initial, thermal state before pump.
-psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt, 
+"""psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt, 
 	thermalization_time=thermalization_time,
     omegar=omegar, grid_size=grid_size, N_particles=N_particles1,
 	imaginary_steps=imaginary_steps
     )
-
 save_state(
     output_dir="results",
     temperature=temperature,
@@ -54,10 +49,32 @@ save_state(
     omegar=omegar,
     grid_size=grid_size,
     N_particles=N_particles1,
+)"""
+
+from pathlib import Path
+import re
+import h5py
+import torch
+results_dir = Path("./results")
+
+latest_path = max(
+    results_dir.glob(
+        f"thermal_state_T{temperature:g}"
+        f"_tth{thermalization_time:g}"
+        f"_wr{omegar:g}"
+        f"_L{grid_size:g}"
+        f"_N{N_particles1:g}"
+        "_id*.hdf5"
+    ),
+    key=lambda p: int(re.search(r"_id(\d+)\.hdf5$", p.name).group(1))
 )
+path =  str(latest_path)
+with h5py.File(path, "r") as f:
+    psi = f['state'][:]
+psi_thermal = torch.from_numpy(psi)
 
 # Pump to induce weak SO.
-"""result1, cavity_monitor1 = get_SO_SGPE_state(psi_thermal, temperature, N_particles1, 
+result1, cavity_monitor1 = get_SO_SGPE_state(psi_thermal, temperature, N_particles1, 
 	lattice_ramp, final_time1, detuning = detuning, J=J,
     omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma, monitor_every=monitor_every)
 psi_SO = result1['states'][-1]
@@ -86,4 +103,4 @@ save_path = save_quench_run(
     final_time2=final_time2,
     J=J,
     detuning=detuning,
-)"""
+)
