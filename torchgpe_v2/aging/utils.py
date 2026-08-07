@@ -64,9 +64,16 @@ def save_quench_run(
     """
     Save the SGPE states, cavity fields, and run parameters in HDF5 format.
     """
-    output_path, run_id = get_next_run_path(
+    output_path, run_id = get_next_quench_path(
         output_dir=output_dir,
         temperature=temperature,
+        N_particles1=N_particles1,
+        N_particles2=N_particles2,
+        thermalization_time=thermalization_time,
+        omegar=omegar,
+        grid_size=grid_size,
+        J=J,
+        detuning=detuning,
         prefix=prefix,
     )
 
@@ -171,6 +178,44 @@ def get_next_state_path(
             f"_wr{omegar:g}"
             f"_L{grid_size:g}"
             f"_N{N_particles:g}"
+            f"_id{run_id:03d}.hdf5"
+        )
+
+        path = output_dir / filename
+
+        if not path.exists():
+            return path, run_id
+
+        run_id += 1
+
+def get_next_quench_path(
+    output_dir,
+    temperature,
+    N_particles1,
+    N_particles2,
+    thermalization_time,
+    omegar,
+    grid_size,
+    J,
+    detuning,
+    prefix="SO_quench",
+):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    run_id = 0
+
+    while True:
+        filename = (
+            f"{prefix}"
+            f"_T{temperature:g}"
+            f"_N1{N_particles1:g}"
+            f"_N2{N_particles2:g}"
+            f"_tth{thermalization_time:g}"
+            f"_wr{omegar:g}"
+            f"_L{grid_size:g}"
+            f"_J{J:g}"
+            f"_D{detuning:g}"
             f"_id{run_id:03d}.hdf5"
         )
 

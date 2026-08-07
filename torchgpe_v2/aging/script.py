@@ -35,7 +35,9 @@ lattice_static = config["boundaries"]["lattice_static"]
 
 J, detuning, imaginary_steps = 0, -10e6, int(500)
 
-# Initial, thermal state before pump.
+
+"""
+### Thermal State, Begin
 psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt, 
 	thermalization_time=thermalization_time,
     omegar=omegar, grid_size=grid_size, N_particles=N_particles1,
@@ -50,8 +52,10 @@ save_state(
     grid_size=grid_size,
     N_particles=N_particles1,
 )
-
+### Thermal State, END
 """
+
+
 from pathlib import Path
 import re
 import h5py
@@ -66,9 +70,9 @@ latest_path = max(
         f"_L{grid_size:g}"
         f"_N{N_particles1:g}"
         "_id*.hdf5"
-    ),"""
-    #key=lambda p: int(re.search(r"_id(\d+)\.hdf5$", p.name).group(1))
-""")
+    ),
+    key=lambda p: int(re.search(r"_id(\d+)\.hdf5$", p.name).group(1))
+)
 path =  str(latest_path)
 with h5py.File(path, "r") as f:
     psi = f['state'][:]
@@ -78,7 +82,7 @@ psi_thermal = torch.from_numpy(psi)
 result1, cavity_monitor1 = get_SO_SGPE_state(psi_thermal, temperature, N_particles1, 
 	lattice_ramp, final_time1, detuning = detuning, J=J,
     omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma, monitor_every=monitor_every)
-"""
+
 
 
 # N-> N/2 Quench, re-organization and equilibration of vortices.
@@ -88,7 +92,7 @@ result2, cavity_monitor2 = get_SO_SGPE_state(psi_SO, temperature, N_particles2,
     omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma, monitor_every=monitor_every)
 """
 
-"""
+
 save_path = save_quench_run(
     output_dir="results",
     temperature=temperature,
@@ -108,4 +112,3 @@ save_path = save_quench_run(
     J=J,
     detuning=detuning,
 )
-"""
