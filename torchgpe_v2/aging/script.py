@@ -11,6 +11,7 @@ parser.add_argument("--N_particles2", type=int, required=True)
 parser.add_argument("--grid_size", type=float, required=True)
 parser.add_argument("--omegar", type=float, required=True)
 parser.add_argument("--thermalization_time", type=float, required=True)
+parser.add_argument("--gamma", type=float, required=True)
 args = parser.parse_args()
 
 
@@ -26,10 +27,11 @@ N_particles1 = args.N_particles1
 N_particles2 = args.N_particles2
 grid_size = args.grid_size
 omegar = args.omegar
+gamma1, gamma2 = args.gamma1, args.gamma2
 thermalization_time = args.thermalization_time
 
-
-dt, gamma = 1e-6, 0.01
+gamma = gamma1
+dt = 1e-6
 final_time1, final_time2 = 50e-3, 50e-3
 J, detuning, imaginary_steps = 0, -10e6, 500
 monitor_every = 500
@@ -108,7 +110,7 @@ psi_SO = result1['states'][-1]
 
 
 
-gamma = 0.00
+gamma = gamma2
 # N-> N/2 Quench, re-organization and equilibration of vortices.
 result2, cavity_monitor2 = get_SO_SGPE_state(psi_SO, temperature, N_particles2, 
 	lattice_static, final_time2, detuning = detuning,
