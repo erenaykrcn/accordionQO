@@ -87,7 +87,6 @@ save_path = save_quench_run(
 )
 
 
-
 ### Thermal State, Begin
 """psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt, 
 	thermalization_time=thermalization_time,
