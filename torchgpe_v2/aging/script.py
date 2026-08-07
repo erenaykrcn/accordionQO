@@ -29,7 +29,7 @@ omegar = args.omegar
 thermalization_time = args.thermalization_time
 
 
-dt, gamma = 1e-6, 0.0
+dt, gamma = 1e-6, 0.01
 final_time1, final_time2 = 25e-3, 50e-3
 J, detuning, imaginary_steps = 0, -10e6, 500
 monitor_every = 500
@@ -107,6 +107,8 @@ result1, cavity_monitor1 = get_SO_SGPE_state(psi_thermal, temperature, N_particl
 psi_SO = result1['states'][-1]
 
 
+
+gamma = 0
 # N-> N/2 Quench, re-organization and equilibration of vortices.
 result2, cavity_monitor2 = get_SO_SGPE_state(psi_SO, temperature, N_particles2, 
 	lattice_static, final_time2, detuning = detuning,
