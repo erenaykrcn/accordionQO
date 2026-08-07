@@ -259,7 +259,7 @@ def detect_vortices_masked(psi, density_mask):
 
 def get_thermal_state(T, gamma=0.01, J=0, dt=1e-6, thermalization_time=30e-3,
         omegar=50, grid_size=40e-6, N_particles=int(100e3), imaginary_steps=int(500),
-        monitor_cavity=None
+        monitor_cavity=None, monitor_alpha=False
     ):
 
     bec, psi_init = get_BEC(0, imaginary_steps, True, omega=omegar, grid_size=grid_size, 
@@ -268,7 +268,7 @@ def get_thermal_state(T, gamma=0.01, J=0, dt=1e-6, thermalization_time=30e-3,
     mu = estimate_mu(bilayer.layer1, pots1)
     result = propagate_bilayer_sgpe(
                 bilayer, thermalization_time, dt, J, T, gamma, mu,
-        pots1, pots2, P1, P2, leave_progress_bar=False, monitor_cavity=monitor_cavity
+        pots1, pots2, P1, P2, leave_progress_bar=False, monitor_cavity=monitor_cavity, monitor_alpha=monitor_alpha
     )
     psi_Thermal = bilayer.layer1.psi.clone()
 

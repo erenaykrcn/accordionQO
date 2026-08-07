@@ -362,6 +362,7 @@ def propagate_bilayer_sgpe(
     monitor_cavity=None,
     monitor_every=10,
     evolve_layer2=False,
+    monitor_alpha=True
 ):
     if not evolve_layer2:
         print('propagating one layer')
@@ -923,7 +924,7 @@ def propagate_bilayer_sgpe(
                 "Reduce time_step or lower the projector cutoff."
             )
 
-        if monitor_cavity is not None and step % monitor_every == 0:
+        if monitor_cavity is not None and step % monitor_every == 0 and monitor_alpha:
             states.append(psi1.clone())
             t_now = (step + 1) * dt_SI
             cavity_times.append(t_now)
