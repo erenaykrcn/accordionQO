@@ -21,6 +21,8 @@ from thermal import get_thermal_state
 from SGPE_SO import get_SO_SGPE_state
 from torchgpe.utils import parse_config
 from utils import save_quench_run, save_state
+from torchgpe.bec2D.potentials import Contact, DispersiveCavity, Trap
+from torchgpe.bec2D.callbacks import CavityMonitor
 
 config = parse_config("config.yaml")
 
@@ -51,11 +53,46 @@ def lattice_static(t):
     return VP
 
 
+cavity = DispersiveCavity(
+    lattice_depth=lattice_static,
+    cavity_detuning=detuning,
+    **config["potentials"]["cavity"]
+)
+cavity_monitor = CavityMonitor(cavity)
+result = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt, 
+    thermalization_time=thermalization_time,
+    omegar=omegar, grid_size=grid_size, N_particles=N_particles1,
+    imaginary_steps=imaginary_steps, monitor_cavity=cavity_monitor
+    )
+save_path = save_quench_run(
+    output_dir="results",
+    temperature=temperature,
+    result1=result,
+    result2=result, 
+    cavity_monitor1=cavity_monitor,
+    cavity_monitor2=cavity_monitor, 
+    N_particles1=N_particles1,
+    N_particles2=N_particles2,
+    gamma=gamma,
+    dt=dt,
+    thermalization_time=thermalization_time,
+    omegar=omegar,
+    grid_size=grid_size,
+    final_time1=final_time1,
+    final_time2=final_time2,
+    J=J,
+    detuning=detuning,
+    VP=VP,
+    prefix='Thermal_states'
+)
+
+
+
 ### Thermal State, Begin
-psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt, 
+"""psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt, 
 	thermalization_time=thermalization_time,
     omegar=omegar, grid_size=grid_size, N_particles=N_particles1,
-	imaginary_steps=imaginary_steps
+	imaginary_steps=imaginary_steps, monitor_cavity=cavity_monitor
     )
 save_state(
     output_dir="results",
@@ -65,7 +102,7 @@ save_state(
     omegar=omegar,
     grid_size=grid_size,
     N_particles=N_particles1,
-)
+)"""
 ### Thermal State, END
 
 
@@ -112,7 +149,7 @@ with h5py.File(latest_path, "r") as f:
 """
 
 # Pump to induce weak SO.
-result1, cavity_monitor1 = get_SO_SGPE_state(psi_thermal, temperature, N_particles1, 
+"""result1, cavity_monitor1 = get_SO_SGPE_state(psi_thermal, temperature, N_particles1, 
 	lattice_ramp, final_time1, detuning = detuning, J=J,
     omegar=omegar, grid_size=grid_size, dt=dt, gamma=gamma, monitor_every=monitor_every)
 psi_SO = result1['states'][-1]
@@ -146,3 +183,4 @@ save_path = save_quench_run(
     detuning=detuning,
     VP=VP
 )
+"""
