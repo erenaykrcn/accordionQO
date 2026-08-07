@@ -69,9 +69,9 @@ latest_path = max(
         f"_L{grid_size:g}"
         f"_N{N_particles1:g}"
         "_id*.hdf5"
-    ),
-    key=lambda p: int(re.search(r"_id(\d+)\.hdf5$", p.name).group(1))
-)
+    ),"""
+    #key=lambda p: int(re.search(r"_id(\d+)\.hdf5$", p.name).group(1))
+""")
 path =  str(latest_path)
 with h5py.File(path, "r") as f:
     psi = f['state'][:]
