@@ -16,7 +16,6 @@ parser.add_argument("--gamma2", type=float, required=True)
 parser.add_argument("--VP", type=float, required=True)
 args = parser.parse_args()
 
-
 from thermal import get_thermal_state
 from SGPE_SO import get_SO_SGPE_state
 from torchgpe.utils import parse_config
