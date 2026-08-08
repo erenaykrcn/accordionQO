@@ -38,7 +38,7 @@ gamma = gamma1
 dt = 1e-6
 final_time1, final_time2 = 50e-3, 50e-3
 J, detuning, imaginary_steps = 0, -10e6, 500
-monitor_every = 2000
+monitor_every = 100
 J, detuning, imaginary_steps = 0, -10e6, int(500)
 
 
