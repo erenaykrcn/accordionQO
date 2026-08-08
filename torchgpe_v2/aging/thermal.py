@@ -114,7 +114,9 @@ from torchgpe_v2.bec2D.bilayer_v4 import (
 
 from torchgpe_v2.bec2D.potentials import Trap, Contact
 
-def make_bilayer(psi1, psi2, seed=0, omegar=50, grid_size=50e-6, N_particles=int(5e4)):
+def make_bilayer(psi1, psi2, seed=0, omegar=50, 
+    grid_size=50e-6, N_particles=int(5e4),
+    contact_as=100):
     torch.manual_seed(seed)
     np.random.seed(seed)
 
@@ -135,7 +137,7 @@ def make_bilayer(psi1, psi2, seed=0, omegar=50, grid_size=50e-6, N_particles=int
 
     potentials1 = [
         Trap(omegax=omegar, omegay=omegar),
-        Contact(a_s=100, a_orth=1e-6),
+        Contact(a_s=contact_as, a_orth=1e-6),
     ]
     potentials2 = [
         Trap(omegax=omegar, omegay=omegar),
@@ -264,17 +266,19 @@ def detect_vortices_masked(psi, density_mask):
 
 def get_thermal_state(T, gamma=0.01, J=0, dt=1e-6, thermalization_time=30e-3,
         omegar=50, grid_size=40e-6, N_particles=int(100e3), imaginary_steps=int(500),
-        monitor_cavity=None, monitor_alpha=False, monitor_every=10, init_state=None
+        monitor_cavity=None, monitor_alpha=False, monitor_every=10, init_state=None,
+        contact_as=100
     ):
 
     bec, psi_init = get_BEC(0, imaginary_steps, True, omega=omegar, grid_size=grid_size, 
         N_particles=N_particles, init_state=init_state)
-    bilayer, pots1, pots2, P1, P2 = make_bilayer(psi_init, psi_init, 1, omegar=omegar, N_particles=N_particles,  grid_size=grid_size)  # create fresh gases
+    bilayer, pots1, pots2, P1, P2 = make_bilayer(psi_init, psi_init, 1, omegar=omegar, 
+        N_particles=N_particles,  grid_size=grid_size, contact_as=contact_as)  # create fresh gases
     mu = estimate_mu(bilayer.layer1, pots1)
     result = propagate_bilayer_sgpe(
                 bilayer, thermalization_time, dt, J, T, gamma, mu,
         pots1, pots2, P1, P2, leave_progress_bar=False, monitor_cavity=monitor_cavity, 
-        monitor_alpha=monitor_alpha, monitor_every=monitor_every
+        monitor_alpha=monitor_alpha, monitor_every=monitor_every,
     )
     psi_Thermal = bilayer.layer1.psi.clone()
 
