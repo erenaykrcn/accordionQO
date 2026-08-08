@@ -69,7 +69,8 @@ def make_multi_vortex_state(
 # -----------------------------
 # System setup
 # -----------------------------
-def get_BEC(N_vortices, N_iterations, co_rot=False, omega=50, grid_size=50e-6, N_particles=int(5e4)):
+def get_BEC(N_vortices, N_iterations, co_rot=False, omega=50, grid_size=50e-6, 
+    N_particles=int(5e4), init_state=None):
     bec = Gas(
             N_particles=N_particles,
             grid_size=grid_size,          # 30 microns box size
@@ -79,18 +80,22 @@ def get_BEC(N_vortices, N_iterations, co_rot=False, omega=50, grid_size=50e-6, N
     trap = Trap(omegax=omega, omegay=omega)
     contact = Contact(a_s=100)
     
-    vortices = []
-    for i in range(N_vortices):
-        vortices.append({"X0": np.random.random()*10-5, 
-                         "Y0": np.random.random()*10-5, 
-                         "charge": +1 if np.random.random()>0.5 else (+1 if co_rot else -1), "core_adim": 1e-3})
-    bec.psi = make_multi_vortex_state(bec.X, bec.Y, sigma_adim=6e-6 / bec.adim_length, vortices=vortices)
-    psi_final = bec.psi.clone()
-    bec.ground_state(
-            potentials=[trap, contact],
-            N_iterations=N_iterations,
-    )
-    psi_final = bec.psi.clone()
+    if init_state is not None:
+        bec.psi = init_state
+        psi_final = init_state
+    else:
+        vortices = []
+        for i in range(N_vortices):
+            vortices.append({"X0": np.random.random()*10-5, 
+                             "Y0": np.random.random()*10-5, 
+                             "charge": +1 if np.random.random()>0.5 else (+1 if co_rot else -1), "core_adim": 1e-3})
+        bec.psi = make_multi_vortex_state(bec.X, bec.Y, sigma_adim=6e-6 / bec.adim_length, vortices=vortices)
+        psi_final = bec.psi.clone()
+        bec.ground_state(
+                potentials=[trap, contact],
+                N_iterations=N_iterations,
+        )
+        psi_final = bec.psi.clone()
     return bec, psi_final
 
 
@@ -259,11 +264,11 @@ def detect_vortices_masked(psi, density_mask):
 
 def get_thermal_state(T, gamma=0.01, J=0, dt=1e-6, thermalization_time=30e-3,
         omegar=50, grid_size=40e-6, N_particles=int(100e3), imaginary_steps=int(500),
-        monitor_cavity=None, monitor_alpha=False, monitor_every=10
+        monitor_cavity=None, monitor_alpha=False, monitor_every=10, init_state=None
     ):
 
     bec, psi_init = get_BEC(0, imaginary_steps, True, omega=omegar, grid_size=grid_size, 
-        N_particles=N_particles)
+        N_particles=N_particles, init_state=init_state)
     bilayer, pots1, pots2, P1, P2 = make_bilayer(psi_init, psi_init, 1, omegar=omegar, N_particles=N_particles,  grid_size=grid_size)  # create fresh gases
     mu = estimate_mu(bilayer.layer1, pots1)
     result = propagate_bilayer_sgpe(

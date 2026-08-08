@@ -51,7 +51,6 @@ def lattice_ramp(t):
 def lattice_static(t):
     return VP
 
-
 cavity = DispersiveCavity(
     lattice_depth=lattice_static,
     cavity_detuning=detuning,
@@ -103,7 +102,6 @@ save_state(
     N_particles=N_particles1,
 )"""
 ### Thermal State, END
-
 
 """results_dir = Path("./results")
 latest_path = max(
