@@ -38,7 +38,7 @@ gamma = gamma1
 dt = 1e-6
 final_time1, final_time2 = 50e-3, 50e-3
 J, detuning, imaginary_steps = 0, -10e6, 500
-monitor_every = 2000
+monitor_every = 1000
 J, detuning, imaginary_steps = 0, -10e6, int(500)
 
 
@@ -61,7 +61,8 @@ cavity_monitor = CavityMonitor(cavity)
 result = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt, 
     thermalization_time=thermalization_time,
     omegar=omegar, grid_size=grid_size, N_particles=N_particles1,
-    imaginary_steps=imaginary_steps, monitor_cavity=cavity_monitor
+    imaginary_steps=imaginary_steps, monitor_cavity=cavity_monitor,
+    monitor_every=monitor_every
     )
 save_path = save_quench_run(
     output_dir="results",
