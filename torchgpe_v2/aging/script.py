@@ -82,7 +82,7 @@ save_path = save_quench_run(
     J=J,
     detuning=detuning,
     VP=VP,
-    prefix='Thermal_states'
+    prefix='_Thermal_states'
 )
 
 

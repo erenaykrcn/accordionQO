@@ -924,17 +924,19 @@ def propagate_bilayer_sgpe(
                 "Reduce time_step or lower the projector cutoff."
             )
 
-        if monitor_cavity is not None and step % monitor_every == 0 and monitor_alpha:
+        if monitor_cavity is not None and step % monitor_every == 0:
             states.append(psi1.clone())
-            t_now = (step + 1) * dt_SI
-            cavity_times.append(t_now)
 
-            cavity_alpha.append(
-                monitor_cavity.get_alpha(
-                    gas1.psi,
-                    time=t_now,
-                ).detach().cpu()
-            )
+            if monitor_alpha:
+                t_now = (step + 1) * dt_SI
+                cavity_times.append(t_now)
+
+                cavity_alpha.append(
+                    monitor_cavity.get_alpha(
+                        gas1.psi,
+                        time=t_now,
+                    ).detach().cpu()
+                )
 
         gas1.psi = psi1
         if evolve_layer2:
