@@ -377,6 +377,9 @@ def propagate_bilayer_sgpe(
     Thermal damping/noise is then added as a separate projected stochastic
     correction.
 
+    Supports nonlinear potentials with an `update_time(t)` method,
+    e.g. DynamicContact with a time-dependent scattering length.
+
     Important limiting case
     -----------------------
     gamma = 0
@@ -384,21 +387,6 @@ def propagate_bilayer_sgpe(
     J = 0
 
     -> reduces to ordinary TorchGPE-style real-time propagation.
-
-    Parameters
-    ----------
-    final_time, time_step:
-        Physical time in seconds.
-
-    J:
-        Dimensionless Josephson energy in the same units as the
-        dimensionless GP Hamiltonian. Can also be callable J(t_SI).
-
-    temperature:
-        Dimensionless k_B T / (hbar * adim_pulse).
-
-    chemical_potential:
-        Dimensionless mu / (hbar * adim_pulse).
     """
 
     import math
@@ -503,6 +491,18 @@ def propagate_bilayer_sgpe(
         ) = prepared2
 
     # ---------------------------------------------------------
+    # NEW:
+    # update internal parameters of potentials such as
+    # DynamicContact before evaluating their potential.
+    #
+    # This does NOT affect ordinary Contact, Trap, Cavity, etc.
+    # ---------------------------------------------------------
+    def update_internal_time_dependence(potentials, time_SI):
+        for potential in potentials:
+            if hasattr(potential, "update_time"):
+                potential.update_time(time_SI)
+
+    # ---------------------------------------------------------
     # Momentum grid matching the unpadded psi
     # ---------------------------------------------------------
     kx = 2 * torch.pi * torch.fft.fftfreq(
@@ -527,10 +527,6 @@ def propagate_bilayer_sgpe(
 
     kinetic = 0.5 * (KX**2 + KY**2)
 
-    # TorchGPE propagation uses:
-    #
-    # kinetic_propagator = exp(-0.5 i kinetic dt)
-    #
     kinetic_half = torch.exp(
         -0.5j * kinetic * dt
     )
@@ -563,11 +559,6 @@ def propagate_bilayer_sgpe(
         )
 
     def tangent_project(psi, field):
-        """
-        Number-conserving projection:
-
-            Q f = f - psi <psi|f>/<psi|psi>
-        """
         norm = inner(psi, psi).real.clamp_min(1e-30)
         overlap = inner(psi, field)
 
@@ -579,7 +570,7 @@ def propagate_bilayer_sgpe(
         )
 
     # ---------------------------------------------------------
-    # EXACT TorchGPE-style potential step
+    # TorchGPE-style potential step
     # ---------------------------------------------------------
     def potential_step(
         gas,
@@ -590,16 +581,29 @@ def propagate_bilayer_sgpe(
         static_nonlinear,
         dynamic_nonlinear,
     ):
-        # Nonlinear potentials must see the current state.
         gas.psi = psi
 
         total = static_linear.clone()
 
+        # Ordinary TorchGPE dynamic linear potentials
         for potential in dynamic_linear:
             total = total + potential.get_potential(
                 *gas.coordinates,
                 time_SI,
             )
+
+        # -------------------------------------------------
+        # NEW:
+        # DynamicContact remains classified as a static
+        # nonlinear TorchGPE potential, because its
+        # potential_function signature itself is unchanged.
+        #
+        # We only update its internal coupling g(t).
+        # -------------------------------------------------
+        update_internal_time_dependence(
+            static_nonlinear,
+            time_SI,
+        )
 
         for potential in static_nonlinear:
             total = total + potential.potential_function(
@@ -607,6 +611,7 @@ def propagate_bilayer_sgpe(
                 psi,
             )
 
+        # Existing genuinely dynamic nonlinear potentials
         for potential in dynamic_nonlinear:
             total = total + potential.potential_function(
                 *gas.coordinates,
@@ -690,6 +695,28 @@ def propagate_bilayer_sgpe(
         prepared,
     ):
         gas.psi = psi
+
+        (
+            static_linear,
+            dynamic_linear,
+            static_nonlinear,
+            dynamic_nonlinear,
+        ) = prepared
+
+        # -------------------------------------------------
+        # NEW:
+        # make sure dissipative Hamiltonian uses the same
+        # instantaneous interaction strength.
+        # -------------------------------------------------
+        update_internal_time_dependence(
+            static_nonlinear,
+            time_SI,
+        )
+
+        update_internal_time_dependence(
+            dynamic_nonlinear,
+            time_SI,
+        )
 
         local = _evaluate_total_potential(
             gas,
@@ -787,10 +814,6 @@ def propagate_bilayer_sgpe(
 
     # ---------------------------------------------------------
     # Norm correction
-    #
-    # Only used when SGPE corrections are active.
-    # It is deliberately NOT applied in the deterministic
-    # gamma=T=0 limit, so TorchGPE evolution is reproduced.
     # ---------------------------------------------------------
     norm1_target = (
         torch.sum(torch.abs(psi1)**2)
@@ -845,12 +868,21 @@ def propagate_bilayer_sgpe(
 
     for step in iterator:
 
-        # Match TorchGPE's convention as closely as possible:
-        # evaluate time-dependent potentials at current propagation time.
         time_SI = step * dt_SI
 
+        # -----------------------------------------------------
+        # NEW:
+        # Use midpoint for internally time-dependent couplings.
+        #
+        # This is important for a_s(t):
+        # if ramp_time << dt, it correctly approaches an
+        # instantaneous quench instead of spending the whole
+        # first timestep at a_s_initial.
+        # -----------------------------------------------------
+        time_mid_SI = time_SI + 0.5 * dt_SI
+
         J_now = (
-            float(J(time_SI))
+            float(J(time_mid_SI))
             if callable(J)
             else float(J)
         )
@@ -866,21 +898,16 @@ def propagate_bilayer_sgpe(
                 J_now,
             )
 
-        # Exact same structure as TorchGPE propagation_step:
-        #
-        #   psik *= kinetic_half
-        #   psi  *= potential_propagator
-        #   psik *= kinetic_half
-        #
+        # Use midpoint for local Hamiltonian.
         psi1 = torchgpe_step_layer1(
             psi1,
-            time_SI,
+            time_mid_SI,
         )
 
         if evolve_layer2:
             psi2 = torchgpe_step_layer2(
                 psi2,
-                time_SI,
+                time_mid_SI,
             )
 
         if evolve_layer2 and J_now != 0:
@@ -899,7 +926,7 @@ def propagate_bilayer_sgpe(
             damp1 = dissipative_drift(
                 gas1,
                 psi1,
-                time_SI,
+                time_mid_SI,
                 prepared1,
                 projector1,
             )
@@ -910,7 +937,7 @@ def propagate_bilayer_sgpe(
                 damp2 = dissipative_drift(
                     gas2,
                     psi2,
-                    time_SI,
+                    time_mid_SI,
                     prepared2,
                     projector2,
                 )
@@ -937,7 +964,7 @@ def propagate_bilayer_sgpe(
                 )
 
         # =====================================================
-        # 4. Numerical norm correction ONLY for SGPE evolution
+        # 4. Numerical norm correction
         # =====================================================
 
         if gamma != 0 or temperature != 0:
