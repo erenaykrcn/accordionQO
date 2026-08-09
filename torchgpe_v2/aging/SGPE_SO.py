@@ -15,7 +15,8 @@ config = parse_config("config.yaml")
 
 def get_SO_SGPE_state(init_state, temperature, N_particles, lattice, 
     final_time, detuning=-10e6, 
-    omegar=50, grid_size=40e-6, dt=1e-6, gamma=0.01, J=0, monitor_every=10):
+    omegar=50, grid_size=40e-6, dt=1e-6, gamma=0.01, J=0, 
+    monitor_every=10, a_s=100):
 
     def make_multi_vortex_state(
         X,
@@ -86,7 +87,7 @@ def get_SO_SGPE_state(init_state, temperature, N_particles, lattice,
         )
         # Harmonic trap + contact interactions
         trap = Trap(omegax=omega, omegay=omega)
-        contact = Contact(a_s=100)
+        contact = Contact(a_s=a_s)
 
         if init_state is not None:
             bec.psi = init_state.clone()
@@ -123,7 +124,7 @@ def get_SO_SGPE_state(init_state, temperature, N_particles, lattice,
     from torchgpe_v2.bec2D.potentials import Trap, Contact
 
     trap = Trap(omegax=omegar, omegay=omegar)
-    contact = Contact(a_s=100)
+    contact = Contact(a_s=a_s)
     cavity = DispersiveCavity(
                 lattice_depth=lattice,
                 cavity_detuning=detuning,
