@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 import h5py
 import torch
+import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--temperature", type=float, required=True)
