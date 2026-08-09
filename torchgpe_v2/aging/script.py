@@ -63,7 +63,7 @@ result = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt,
     thermalization_time=thermalization_time,
     omegar=omegar, grid_size=grid_size, N_particles=N_particles1,
     imaginary_steps=imaginary_steps, monitor_cavity=cavity_monitor,
-    monitor_every=monitor_every
+    monitor_every=monitor_every, contact_as=a_s
     )
 
 save_path = save_quench_run(
