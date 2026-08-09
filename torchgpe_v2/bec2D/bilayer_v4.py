@@ -904,25 +904,17 @@ def propagate_bilayer_sgpe(
         else:
             psi1 = normalize_layer1(psi1)
 
+        # numerical norm correction
         if evolve_layer2:
-            finite = (
-                torch.isfinite(psi1.real).all()
-                and torch.isfinite(psi1.imag).all()
-                and torch.isfinite(psi2.real).all()
-                and torch.isfinite(psi2.imag).all()
-            )
+            psi1, psi2 = normalize_total(psi1, psi2)
         else:
-            finite = (
-                torch.isfinite(psi1.real).all()
-                and torch.isfinite(psi1.imag).all()
-            )
+            psi1 = normalize_layer1(psi1)
 
-        if not bool(finite):
-            raise RuntimeError(
-                "Canonical SGPE became non-finite at "
-                f"step={step}, time={time_SI:.6e} s. "
-                "Reduce time_step or lower the projector cutoff."
-            )
+        # IMPORTANT: update Gas BEFORE monitoring
+        gas1.psi = psi1
+
+        if evolve_layer2:
+            gas2.psi = psi2
 
         if monitor_cavity is not None and step % monitor_every == 0:
             states.append(psi1.clone())
@@ -937,10 +929,6 @@ def propagate_bilayer_sgpe(
                         time=t_now,
                     ).detach().cpu()
                 )
-
-        gas1.psi = psi1
-        if evolve_layer2:
-            gas2.psi = psi2
 
     for potential in potentials1:
         if hasattr(potential, "on_propagation_end"):

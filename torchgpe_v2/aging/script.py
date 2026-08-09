@@ -14,6 +14,7 @@ parser.add_argument("--thermalization_time", type=float, required=True)
 parser.add_argument("--gamma1", type=float, required=True)
 parser.add_argument("--gamma2", type=float, required=True)
 parser.add_argument("--VP", type=float, required=True)
+parser.add_argument("--a_s", type=float, required=True)
 args = parser.parse_args()
 
 from thermal import get_thermal_state
@@ -33,6 +34,7 @@ omegar = args.omegar
 VP = args.VP
 gamma1, gamma2 = args.gamma1, args.gamma2
 thermalization_time = args.thermalization_time
+a_s = args.a_s
 
 gamma = gamma1
 dt = 1e-6
@@ -63,6 +65,7 @@ result = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt,
     imaginary_steps=imaginary_steps, monitor_cavity=cavity_monitor,
     monitor_every=monitor_every
     )
+
 save_path = save_quench_run(
     output_dir="results",
     temperature=temperature,
@@ -82,6 +85,7 @@ save_path = save_quench_run(
     J=J,
     detuning=detuning,
     VP=VP,
+    a_s=a_s,
     prefix='_Thermal_states'
 )
 

@@ -106,7 +106,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-from torchgpe_v2.bec2D.bilayer_v4 import (
+from torchgpe_v2.bec2D.bilayer_v5 import (
     BilayerGas, propagate_bilayer,
     propagate_bilayer_sgpe,
     make_momentum_projector,
