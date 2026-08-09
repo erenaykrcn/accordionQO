@@ -102,6 +102,7 @@ save_path = save_quench_run(
     grid_size=grid_size,
     final_time1=final_time1,
     final_time2=final_time2,
+    a_s=170,
     J=J,
     detuning=detuning,
     VP=VP
