@@ -37,9 +37,9 @@ thermalization_time = args.thermalization_time
 
 gamma = gamma1
 dt = 1e-6
-final_time1, final_time2 = 1e-3, 1e-3
+final_time1, final_time2 = 60e-3, 20e-3
 J, detuning, imaginary_steps = 0, -10e6, 500
-monitor_every1 = 500
+monitor_every1 = 1000
 monitor_every2 = 10
 J, detuning, imaginary_steps = 0, -10e6, int(500)
 
