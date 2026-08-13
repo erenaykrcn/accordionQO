@@ -399,6 +399,7 @@ def get_thermal_state(
     contact_as=100,
     wall_height=1000.0,
     wall_width=0.5e-6,
+    seed=None,
 ):
 
     bec, psi_init = get_BEC(
@@ -416,7 +417,7 @@ def get_thermal_state(
     bilayer, pots1, pots2, P1, P2 = make_bilayer(
         psi_init,
         psi_init,
-        seed=1,
+        seed=seed,
         box_length=box_length,
         grid_size=grid_size,
         N_particles=N_particles,

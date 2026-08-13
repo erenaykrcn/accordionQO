@@ -25,7 +25,7 @@ grid_size=45e-6
 N_particles = 50e3
 enable_T = True
 temperature = 30
-
+seed = np.random.randint(1e6)
 
 config = parse_config("config.yaml")
 ramp = config["boundaries"]["lattice_ramp"]
@@ -50,7 +50,9 @@ X_um, Y_um = np.meshgrid(x_um, y_um, indexing="ij")
     
 res = get_thermal_state(temperature, thermalization_time=thermalization_time,
              grid_size=grid_size, N_particles=int(50e3), monitor_cavity=cavity_monitor,
-            monitor_every=2000, gamma=gamma, contact_as=100, box_length=30e-6)
+            monitor_every=2000, gamma=gamma, contact_as=100, box_length=30e-6,
+            seed=seed
+            )
 
 
 
@@ -62,8 +64,8 @@ cavity = DispersiveCavity(
 cavity_monitor = CavityMonitor(cavity)
 
 N_particles=100e3
-bilayer, pots1, pots2, P1, P2 = make_bilayer(res['states'][-1], res['states'][-1], 1, 
-           box_length=box_length, N_particles=N_particles, grid_size=grid_size)
+bilayer, pots1, pots2, P1, P2 = make_bilayer(res['states'][-1], res['states'][-1], 
+           box_length=box_length, N_particles=N_particles, grid_size=grid_size, seed=seed)
 mu = estimate_mu(bilayer.layer1, [trap, contact])
 result = propagate_bilayer_sgpe(
             bilayer,
