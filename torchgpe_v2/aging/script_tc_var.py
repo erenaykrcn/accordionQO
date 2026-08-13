@@ -24,7 +24,7 @@ box_length = 30e-6
 grid_size=45e-6
 N_particles = 50e3
 enable_T = True
-temperature = 30
+temperature = 25
 seed = np.random.randint(1e6)
 
 config = parse_config("config.yaml")
