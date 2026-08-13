@@ -66,39 +66,6 @@ def make_multi_vortex_state(
     return psi0
 
 
-# -----------------------------
-# System setup
-# -----------------------------
-def get_BEC(N_vortices, N_iterations, co_rot=False, omega=50, grid_size=50e-6, 
-    N_particles=int(5e4), init_state=None):
-    bec = Gas(
-            N_particles=N_particles,
-            grid_size=grid_size,          # 30 microns box size
-            #n_points=2**9,            # try 2**10 if you want more resolution
-    )
-    # Harmonic trap + contact interactions
-    trap = Trap(omegax=omega, omegay=omega)
-    contact = Contact(a_s=100)
-    
-    if init_state is not None:
-        bec.psi = init_state
-        psi_final = init_state
-    else:
-        vortices = []
-        for i in range(N_vortices):
-            vortices.append({"X0": np.random.random()*10-5, 
-                             "Y0": np.random.random()*10-5, 
-                             "charge": +1 if np.random.random()>0.5 else (+1 if co_rot else -1), "core_adim": 1e-3})
-        bec.psi = make_multi_vortex_state(bec.X, bec.Y, sigma_adim=6e-6 / bec.adim_length, vortices=vortices)
-        psi_final = bec.psi.clone()
-        bec.ground_state(
-                potentials=[trap, contact],
-                N_iterations=N_iterations,
-        )
-        psi_final = bec.psi.clone()
-    return bec, psi_final
-
-
 import sys
 sys.path.append("../../")
 from torchgpe_v2.bec2D.gas import Gas
@@ -114,9 +81,139 @@ from torchgpe_v2.bec2D.bilayer_v5 import (
 
 from torchgpe_v2.bec2D.potentials import Trap, Contact
 
-def make_bilayer(psi1, psi2, seed=0, omegar=50, 
-    grid_size=50e-6, N_particles=int(5e4),
-    contact_as=100):
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+
+#from torchgpe.bec2D import Gas
+from torchgpe.bec2D.potentials import Contact
+from torchgpe.utils.potentials import LinearPotential
+
+
+# ============================================================
+# Box potential
+# ============================================================
+
+class BoxTrap(LinearPotential):
+
+    def __init__(
+        self,
+        box_length,
+        wall_height=1000.0,
+        wall_width=0.5e-6,
+    ):
+        super().__init__()
+
+        self.box_length = box_length
+        self.wall_height = wall_height
+        self.wall_width = wall_width
+
+    def get_potential(self, X, Y):
+        # X,Y are dimensionless TorchGPE coordinates,
+        # so convert physical lengths -> dimensionless lengths
+        L = self.box_length / self.gas.adim_length
+        w = self.wall_width / self.gas.adim_length
+
+        half_L = L / 2
+
+        # Smooth walls using tanh
+        wall_x = 0.5 * (
+            1.0 + torch.tanh((torch.abs(X) - half_L) / w)
+        )
+
+        wall_y = 0.5 * (
+            1.0 + torch.tanh((torch.abs(Y) - half_L) / w)
+        )
+
+        # union of x and y walls
+        wall = 1.0 - (1.0 - wall_x) * (1.0 - wall_y)
+
+        return self.wall_height * wall
+
+
+def get_BEC(
+    N_vortices,
+    N_iterations,
+    co_rot=False,
+    box_length=30e-6,
+    grid_size=40e-6,
+    N_particles=int(5e4),
+    init_state=None,
+    wall_height=1000.0,
+    wall_width=0.5e-6,
+):
+    bec = Gas(
+        N_particles=N_particles,
+        grid_size=grid_size,
+    )
+
+    trap = BoxTrap(
+        box_length=box_length,
+        wall_height=wall_height,
+        wall_width=wall_width,
+    )
+
+    contact = Contact(a_s=100)
+
+    if init_state is not None:
+        bec.psi = init_state
+        psi_final = init_state
+
+    else:
+        vortices = []
+
+        # Put initial vortices only inside the physical box.
+        # Leave some margin from the walls.
+        margin = 2e-6
+        available_length = box_length - 2 * margin
+
+        for i in range(N_vortices):
+            vortices.append({
+                "X0": (
+                    np.random.random() * available_length
+                    - available_length / 2
+                ) * 1e6,  # make_multi_vortex_state expects microns here
+                "Y0": (
+                    np.random.random() * available_length
+                    - available_length / 2
+                ) * 1e6,
+                "charge": (
+                    +1
+                    if np.random.random() > 0.5
+                    else (+1 if co_rot else -1)
+                ),
+                "core_adim": 1e-3,
+            })
+
+        # Uniform makes more sense for a box than Gaussian
+        bec.psi = make_multi_vortex_state(
+            bec.X,
+            bec.Y,
+            sigma_adim=box_length / bec.adim_length,
+            vortices=vortices,
+            adim_length=bec.adim_length,
+            background="uniform",
+        )
+
+        bec.ground_state(
+            potentials=[trap, contact],
+            N_iterations=N_iterations,
+        )
+
+        psi_final = bec.psi.clone()
+
+    return bec, psi_final
+def make_bilayer(
+    psi1,
+    psi2,
+    seed=0,
+    box_length=30e-6,
+    grid_size=40e-6,
+    N_particles=int(5e4),
+    contact_as=100,
+    wall_height=1000.0,
+    wall_width=0.5e-6,
+):
     torch.manual_seed(seed)
     np.random.seed(seed)
 
@@ -136,18 +233,39 @@ def make_bilayer(psi1, psi2, seed=0, omegar=50,
     bilayer = BilayerGas(gas1, gas2)
 
     potentials1 = [
-        Trap(omegax=omegar, omegay=omegar),
-        Contact(a_s=contact_as, a_orth=1e-6),
+        BoxTrap(
+            box_length=box_length,
+            wall_height=wall_height,
+            wall_width=wall_width,
+        ),
+        Contact(
+            a_s=contact_as,
+            a_orth=1e-6,
+        ),
     ]
+
     potentials2 = [
-        Trap(omegax=omegar, omegay=omegar),
-        Contact(a_s=100, a_orth=1e-6),
+        BoxTrap(
+            box_length=box_length,
+            wall_height=wall_height,
+            wall_width=wall_width,
+        ),
+        Contact(
+            a_s=100,
+            a_orth=1e-6,
+        ),
     ]
 
     projector1 = make_momentum_projector(gas1)
     projector2 = make_momentum_projector(gas2)
 
-    return bilayer, potentials1, potentials2, projector1, projector2
+    return (
+        bilayer,
+        potentials1,
+        potentials2,
+        projector1,
+        projector2,
+    )
 
 
 from torchgpe.utils.potentials import LinearPotential, NonLinearPotential
@@ -264,25 +382,75 @@ def detect_vortices_masked(psi, density_mask):
     return vort, antiv
 
 
-def get_thermal_state(T, gamma=0.01, J=0, dt=1e-6, thermalization_time=30e-3,
-        omegar=50, grid_size=40e-6, N_particles=int(100e3), imaginary_steps=int(500),
-        monitor_cavity=None, monitor_alpha=False, monitor_every=10, init_state=None,
-        contact_as=100
-    ):
+def get_thermal_state(
+    T,
+    gamma=0.01,
+    J=0,
+    dt=1e-6,
+    thermalization_time=30e-3,
+    box_length=30e-6,
+    grid_size=40e-6,
+    N_particles=int(100e3),
+    imaginary_steps=int(500),
+    monitor_cavity=None,
+    monitor_alpha=False,
+    monitor_every=10,
+    init_state=None,
+    contact_as=100,
+    wall_height=1000.0,
+    wall_width=0.5e-6,
+):
 
-    bec, psi_init = get_BEC(0, imaginary_steps, True, omega=omegar, grid_size=grid_size, 
-        N_particles=N_particles, init_state=init_state)
-    bilayer, pots1, pots2, P1, P2 = make_bilayer(psi_init, psi_init, 1, omegar=omegar, 
-        N_particles=N_particles,  grid_size=grid_size, contact_as=contact_as)  # create fresh gases
-    mu = estimate_mu(bilayer.layer1, pots1)
-    result = propagate_bilayer_sgpe(
-                bilayer, thermalization_time, dt, J, T, gamma, mu,
-        pots1, pots2, P1, P2, leave_progress_bar=False, monitor_cavity=monitor_cavity, 
-        monitor_alpha=monitor_alpha, monitor_every=monitor_every,
+    bec, psi_init = get_BEC(
+        0,
+        imaginary_steps,
+        True,
+        box_length=box_length,
+        grid_size=grid_size,
+        N_particles=N_particles,
+        init_state=init_state,
+        wall_height=wall_height,
+        wall_width=wall_width,
     )
-    psi_Thermal = bilayer.layer1.psi.clone()
+
+    bilayer, pots1, pots2, P1, P2 = make_bilayer(
+        psi_init,
+        psi_init,
+        seed=1,
+        box_length=box_length,
+        grid_size=grid_size,
+        N_particles=N_particles,
+        contact_as=contact_as,
+        wall_height=wall_height,
+        wall_width=wall_width,
+    )
+
+    mu = estimate_mu(
+        bilayer.layer1,
+        pots1,
+    )
+
+    result = propagate_bilayer_sgpe(
+        bilayer,
+        thermalization_time,
+        dt,
+        J,
+        T,
+        gamma,
+        mu,
+        pots1,
+        pots2,
+        P1,
+        P2,
+        leave_progress_bar=False,
+        monitor_cavity=monitor_cavity,
+        monitor_alpha=monitor_alpha,
+        monitor_every=monitor_every,
+    )
+
+    psi_thermal = bilayer.layer1.psi.clone()
 
     if monitor_cavity is None:
-        return psi_Thermal
+        return psi_thermal
     else:
         return result

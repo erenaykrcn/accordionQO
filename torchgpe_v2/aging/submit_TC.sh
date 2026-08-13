@@ -25,5 +25,5 @@ ssh euler "bash -l -c '
 
     cd torchgpe_v2/aging
 
-    sbatch run2.sh $ARGS
+    sbatch run_TC.sh $ARGS
 '"

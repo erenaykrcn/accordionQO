@@ -361,6 +361,7 @@ def propagate_bilayer_sgpe(
     monitor_every=10,
     evolve_layer2=False,
     monitor_alpha=True,
+    decay=True,
 ):
     """
     TorchGPE-compatible bilayer SGPE.
@@ -1015,13 +1016,12 @@ def propagate_bilayer_sgpe(
         # 7. Monitoring
         # =====================================================
 
-        if (
-            monitor_cavity is not None
-            and step % monitor_every == 0
-        ):
-            states.append(
-                psi1.clone()
-            )
+        if monitor_cavity is not None:
+
+            if step % monitor_every == 0:
+                states.append(
+                    psi1.clone()
+                )
 
             if monitor_alpha:
                 t_now = (step + 1) * dt_SI
