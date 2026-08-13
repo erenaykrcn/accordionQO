@@ -3,6 +3,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
 
 def to_numpy(x):
     """Convert Torch tensors or array-like objects to NumPy arrays."""
@@ -252,3 +253,187 @@ def save_state(
     print(f"Saved run {run_id} to: {output_path}")
 
     return output_path
+
+
+
+def plot_psi(psi, x_um, y_um,
+    density_mask=None,
+    density_threshold=0.05, ):
+    X_um, Y_um = np.meshgrid(x_um, y_um, indexing="ij")
+    
+    dens_f = (torch.abs(psi) ** 2).detach().cpu().numpy()
+    phase_f = torch.angle(psi).detach().cpu().numpy()
+    
+    extent = [x_um.min(), x_um.max(), y_um.min(), y_um.max()]
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    im2 = axes[0].imshow(dens_f, origin="lower", extent=extent, aspect="equal")
+    axes[0].set_title("Relaxed density")
+    axes[0].set_xlabel("x (µm)")
+    axes[0].set_ylabel("y (µm)")
+    axes[0].grid(False)
+    plt.colorbar(im2, ax=axes[0])
+    
+    im3 = axes[1].imshow(phase_f, origin="lower", extent=extent, aspect="equal")
+    axes[1].set_title("Relaxed phase")
+    axes[1].set_xlabel("x (µm)")
+    axes[1].set_ylabel("y (µm)")
+    plt.colorbar(im3, ax=axes[1])
+    plt.grid(False)
+    plt.tight_layout()
+    plt.show()
+    
+    
+    psi_np = psi.detach().cpu().numpy()
+    phase = np.angle(psi_np)
+    density = np.abs(psi_np)**2
+    
+    vort, antiv = detect_vortices_masked(
+        psi,
+        density_mask=density_mask,
+        density_threshold=density_threshold
+    )
+    
+    # Convert plaquette-center indices [row, col] to physical coordinates
+    x_v = np.interp(vort[:, 1], np.arange(len(x_um)), x_um)
+    y_v = np.interp(vort[:, 0], np.arange(len(y_um)), y_um)
+    
+    x_av = np.interp(antiv[:, 1], np.arange(len(x_um)), x_um)
+    y_av = np.interp(antiv[:, 0], np.arange(len(y_um)), y_um)
+    
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    
+    im0 = axes[0].imshow(
+        density,
+        origin="lower",
+        extent=extent,
+        aspect="equal",
+    )
+    axes[0].scatter(
+        x_v, y_v,
+        s=12,
+        facecolors="none",
+        edgecolors="red",
+        label=f"vortex ({len(vort)})",
+    )
+    axes[0].scatter(
+        x_av, y_av,
+        s=12,
+        marker="x",
+        color="yellow",
+        label=f"antivortex ({len(antiv)})",
+    )
+    axes[0].set_title("Density with vortices")
+    axes[0].set_xlabel("x (µm)")
+    axes[0].set_ylabel("y (µm)")
+    axes[0].legend()
+    
+    im1 = axes[1].imshow(phase_f, origin="lower", extent=extent, aspect="equal")
+    
+    axes[1].scatter(
+        x_v, y_v,
+        s=12,
+        facecolors="none",
+        edgecolors="red",
+    )
+    axes[1].scatter(
+        x_av, y_av,
+        s=12,
+        marker="x",
+        color="yellow",
+    )
+    axes[1].set_title("Phase with vortices")
+    axes[1].set_xlabel("x (µm)")
+    axes[1].set_ylabel("y (µm)")
+    axes[0].grid(False)
+    axes[1].grid(False)
+    plt.colorbar(im0, ax=axes[0])
+    plt.colorbar(im1, ax=axes[1], label="Phase")
+    plt.tight_layout()
+    plt.show()
+    
+
+def phase_wrap(x):
+    return (x + np.pi) % (2 * np.pi) - np.pi
+
+
+def detect_vortices_from_phase(phase):
+    # Plaquettes only; no periodic wrap across boundaries
+    th00 = phase[:-1, :-1]
+    th10 = phase[1:, :-1]
+    th11 = phase[1:, 1:]
+    th01 = phase[:-1, 1:]
+
+    winding = (
+        phase_wrap(th10 - th00)
+        + phase_wrap(th11 - th10)
+        + phase_wrap(th01 - th11)
+        + phase_wrap(th00 - th01)
+    ) / (2 * np.pi)
+
+    winding_int = np.rint(winding).astype(int)
+
+    vort = np.argwhere(winding_int == 1)
+    antiv = np.argwhere(winding_int == -1)
+
+    # Plaquette-center coordinates in array-index units
+    return vort + 0.5, antiv + 0.5
+
+
+def detect_vortices_masked(
+    psi,
+    density_mask=None,
+    density_threshold=0.05,
+):
+
+    if torch.is_tensor(psi):
+        psi = psi.detach().cpu().numpy()
+    else:
+        psi = np.asarray(psi)
+
+    density = np.abs(psi)**2
+    phase = np.angle(psi)
+
+    # ------------------------------------------------------------
+    # Construct density mask if none was supplied
+    # ------------------------------------------------------------
+    if density_mask is None:
+        density_mask = density > density_threshold * density.max()
+    else:
+        density_mask = np.asarray(density_mask, dtype=bool)
+
+        if density_mask.shape != density.shape:
+            raise ValueError(
+                f"density_mask shape {density_mask.shape} "
+                f"does not match psi shape {density.shape}"
+            )
+
+    # ------------------------------------------------------------
+    # Convert site mask -> plaquette mask
+    #
+    # Require all four corners of the plaquette to lie inside
+    # the accepted density region.
+    # ------------------------------------------------------------
+    plaquette_mask = (
+        density_mask[:-1, :-1]
+        & density_mask[1:, :-1]
+        & density_mask[1:, 1:]
+        & density_mask[:-1, 1:]
+    )
+
+    # ------------------------------------------------------------
+    # Detect phase winding
+    # ------------------------------------------------------------
+    vort, antiv = detect_vortices_from_phase(phase)
+
+    # argwhere() coordinates correspond directly to the
+    # lower-left index of each plaquette
+    vort_i = np.floor(vort).astype(int)
+    antiv_i = np.floor(antiv).astype(int)
+
+    if len(vort):
+        vort = vort[plaquette_mask[vort_i[:, 0], vort_i[:, 1]]]
+
+    if len(antiv):
+        antiv = antiv[plaquette_mask[antiv_i[:, 0], antiv_i[:, 1]]]
+
+    return vort, antiv
