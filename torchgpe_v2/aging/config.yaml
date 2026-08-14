@@ -7,7 +7,7 @@ gas:
   adimensionalization_length: 780e-9
 boundaries:
   cavity_detuning: [-30e6, 0, 30] # 30
-  lattice_ramp: !eval ["linear_ramp(0, 0, 4, 1e-6)"]
+  lattice_ramp: !eval ["linear_ramp(0, 0, 4, 30e-3)"]
   lattice_static: !eval ["linear_ramp(4, 4, 4, 1e-2)"]
 potentials:
   trap:

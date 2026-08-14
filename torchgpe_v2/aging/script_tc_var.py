@@ -17,7 +17,7 @@ from torchgpe_v2.bec2D.bilayer_v5 import (
 )
 from utils import save_quench_run
 
-gamma = 0.01
+gamma = 0.001
 thermalization_time = 50e-3
 final_time = 250e-3
 box_length = 30e-6
