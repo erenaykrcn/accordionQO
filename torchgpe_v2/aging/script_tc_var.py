@@ -19,12 +19,12 @@ from utils import save_quench_run
 
 gamma = 0.01
 thermalization_time = 50e-3
-final_time = 50e-3
+final_time = 250e-3
 box_length = 30e-6
 grid_size=45e-6
 N_particles = 50e3
 enable_T = True
-temperature = 45
+temperature = 41
 seed = np.random.randint(1e6)
 
 config = parse_config("config.yaml")
