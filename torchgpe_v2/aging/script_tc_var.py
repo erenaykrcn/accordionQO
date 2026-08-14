@@ -17,14 +17,14 @@ from torchgpe_v2.bec2D.bilayer_v5 import (
 )
 from utils import save_quench_run
 
-gamma = 0.001
+gamma = 0.0001
 thermalization_time = 50e-3
 final_time = 250e-3
 box_length = 30e-6
 grid_size=45e-6
 N_particles = 50e3
-enable_T = False
-temperature = 0
+enable_T = True
+temperature = 40
 seed = np.random.randint(1e6)
 
 config = parse_config("config.yaml")
