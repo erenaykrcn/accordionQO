@@ -26,7 +26,6 @@ def save_quench_run(
     gamma,
     dt,
     thermalization_time,
-    omegar,
     grid_size,
     final_time1,
     final_time2,
@@ -34,7 +33,7 @@ def save_quench_run(
     detuning,
     VP,
     a_s,
-    prefix="SO_quench",
+    prefix,
 ):
     """
     Save the SGPE states, cavity fields, and run parameters in HDF5 format.
@@ -46,7 +45,6 @@ def save_quench_run(
         N_particles1=N_particles1,
         N_particles2=N_particles2,
         thermalization_time=thermalization_time,
-        omegar=omegar,
         grid_size=grid_size,
         J=J,
         detuning=detuning,
@@ -121,7 +119,6 @@ def save_quench_run(
         h5file.attrs["gamma"] = gamma
         h5file.attrs["dt"] = dt
         h5file.attrs["thermalization_time"] = thermalization_time
-        h5file.attrs["omegar"] = omegar
         h5file.attrs["grid_size"] = grid_size
         h5file.attrs["final_time1"] = final_time1
         h5file.attrs["final_time2"] = final_time2
@@ -173,7 +170,6 @@ def get_next_quench_path(
     N_particles1,
     N_particles2,
     thermalization_time,
-    omegar,
     grid_size,
     J,
     detuning,
@@ -194,7 +190,6 @@ def get_next_quench_path(
             f"_N1{N_particles1:g}"
             f"_N2{N_particles2:g}"
             f"_tth{thermalization_time:g}"
-            f"_wr{omegar:g}"
             f"_L{grid_size:g}"
             f"_J{J:g}"
             f"_D{detuning:g}"

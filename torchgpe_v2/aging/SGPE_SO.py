@@ -1,4 +1,4 @@
-from thermal import get_thermal_state, make_bilayer, estimate_mu
+from thermal import get_thermal_state, make_bilayer, estimate_mu, get_BEC, BoxTrap
 
 import numpy as np
 import torch
@@ -15,7 +15,7 @@ config = parse_config("config.yaml")
 
 def get_SO_SGPE_state(init_state, temperature, N_particles, lattice, 
     final_time, detuning=-10e6, 
-    omegar=50, grid_size=40e-6, dt=1e-6, gamma=0.01, J=0, 
+    omega_r=None, box_length=None, grid_size=40e-6, dt=1e-6, gamma=0.01, J=0, 
     monitor_every=10, a_s=100):
 
     def make_multi_vortex_state(
@@ -74,39 +74,6 @@ def get_SO_SGPE_state(init_state, temperature, N_particles, lattice,
 
         return psi0
 
-
-    # -----------------------------
-    # System setup
-    # -----------------------------
-    def get_BEC(N_vortices, N_iterations, co_rot=False, omega=50, N_particles=50e3, 
-                grid_size=30e-6, sigma_dim=5e-6, core_adim=1e-6, init_state=None):
-        bec = Gas(
-                N_particles=N_particles,
-                grid_size=grid_size,          # 30 microns box size
-                #n_points=2**9,            # try 2**10 if you want more resolution
-        )
-        # Harmonic trap + contact interactions
-        trap = Trap(omegax=omega, omegay=omega)
-        contact = Contact(a_s=a_s)
-
-        if init_state is not None:
-            bec.psi = init_state.clone()
-        else:
-            
-            vortices = []
-            for i in range(N_vortices):
-                vortices.append({"X0": np.random.random()*10-5, 
-                                 "Y0": np.random.random()*10-5, 
-                                 "charge": +1 if np.random.random()>0.5 else (+1 if co_rot else -1), "core_adim":core_adim})
-            bec.psi = make_multi_vortex_state(bec.X, bec.Y, sigma_adim=sigma_dim / bec.adim_length, vortices=vortices)
-        bec.ground_state(
-                potentials=[trap, contact],
-                N_iterations=N_iterations,
-        )
-        psi_final = bec.psi.clone()
-        return bec, psi_final
-
-
     from torchgpe.bec2D.potentials import Contact, DispersiveCavity, Trap
     from torchgpe.bec2D.callbacks import CavityMonitor
     import sys
@@ -123,7 +90,7 @@ def get_SO_SGPE_state(init_state, temperature, N_particles, lattice,
     )
     from torchgpe_v2.bec2D.potentials import Trap, Contact
 
-    trap = Trap(omegax=omegar, omegay=omegar)
+    trap = Trap(omegax=omega_r, omegay=omega_r) if omega_r is not None else BoxTrap(box_length=box_length)
     contact = Contact(a_s=a_s)
     cavity = DispersiveCavity(
                 lattice_depth=lattice,
@@ -133,7 +100,7 @@ def get_SO_SGPE_state(init_state, temperature, N_particles, lattice,
     cavity_monitor = CavityMonitor(cavity)
     
     bilayer, pots1, pots2, P1, P2 = make_bilayer(init_state, init_state, 1, 
-               omegar=omegar, N_particles=N_particles, grid_size=grid_size)
+               omega_r=omega_r, box_length=box_length, N_particles=N_particles, grid_size=grid_size)
     mu = estimate_mu(bilayer.layer1, [trap, contact],)
     result = propagate_bilayer_sgpe(
                 bilayer,
