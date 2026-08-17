@@ -135,37 +135,22 @@ def get_BEC(
     N_vortices,
     N_iterations,
     co_rot=False,
-    omega_r=None,
-    box_length=30e-6,
     grid_size=40e-6,
+    trap=None,
     N_particles=int(5e4),
     init_state=None,
     wall_height=1000.0,
     wall_width=0.5e-6,
+    background = "gaussian",
+
 ):
 
     bec = Gas(
         N_particles=N_particles,
         grid_size=grid_size,
     )
-
-    if omega_r is not None:
-        trap = Trap(
-            omegax=omega_r,
-            omegay=omega_r,
-        )
-        background = "gaussian"
-        sigma_adim = 6e-6 / bec.adim_length
-        vortex_length = 10e-6
-    else:
-        trap = BoxTrap(
-            box_length=box_length,
-            wall_height=wall_height,
-            wall_width=wall_width,
-        )
-        background = "uniform"
-        sigma_adim = box_length / bec.adim_length
-        vortex_length = box_length - 4e-6
+    sigma_adim = 6e-6 / bec.adim_length
+    vortex_length = 10e-6
 
     contact = Contact(a_s=100)
 
@@ -217,8 +202,7 @@ def make_bilayer(
     psi1,
     psi2,
     seed=0,
-    box_length=None,
-    omega_r=None,
+    trap=None,
     grid_size=40e-6,
     N_particles=int(5e4),
     contact_as=100,
@@ -227,12 +211,6 @@ def make_bilayer(
 ):
     torch.manual_seed(seed)
     np.random.seed(seed)
-
-    if box_length is None and omega_r is None:
-        raise ValueError("Either box_length or omegar must be provided.")
-
-    if box_length is not None and omega_r is not None:
-        raise ValueError("Provide only one of box_length or omegar, not both.")
 
     gas_kwargs = dict(
         N_particles=N_particles,
@@ -249,29 +227,8 @@ def make_bilayer(
 
     bilayer = BilayerGas(gas1, gas2)
 
-    if box_length is not None:
-        trap1 = BoxTrap(
-            box_length=box_length,
-            wall_height=wall_height,
-            wall_width=wall_width,
-        )
-        trap2 = BoxTrap(
-            box_length=box_length,
-            wall_height=wall_height,
-            wall_width=wall_width,
-        )
-    else:
-        trap1 = Trap(
-            omegax=omega_r,
-            omegay=omega_r,
-        )
-        trap2 = Trap(
-            omegax=omega_r,
-            omegay=omega_r,
-        )
-
     potentials1 = [
-        trap1,
+        trap,
         Contact(
             a_s=contact_as,
             a_orth=1e-6,
@@ -279,7 +236,7 @@ def make_bilayer(
     ]
 
     potentials2 = [
-        trap2,
+        trap,
         Contact(
             a_s=contact_as,
             a_orth=1e-6,
@@ -418,8 +375,7 @@ def get_thermal_state(
     J=0,
     dt=1e-6,
     thermalization_time=30e-3,
-    box_length=30e-6,
-    omega_r=None,
+    trap=None,
     grid_size=40e-6,
     N_particles=int(100e3),
     imaginary_steps=int(500),
@@ -437,9 +393,7 @@ def get_thermal_state(
         0,
         imaginary_steps,
         True,
-        box_length=box_length,
-        omega_r=omega_r,
-        grid_size=grid_size,
+        trap=trap,
         N_particles=N_particles,
         init_state=init_state,
         wall_height=wall_height,
@@ -450,9 +404,7 @@ def get_thermal_state(
         psi_init,
         psi_init,
         seed=seed,
-        box_length=box_length,
-        omega_r=omega_r,
-        grid_size=grid_size,
+        trap=trap,
         N_particles=N_particles,
         contact_as=contact_as,
         wall_height=wall_height,

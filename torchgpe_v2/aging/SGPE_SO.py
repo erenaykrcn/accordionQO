@@ -14,8 +14,7 @@ config = parse_config("config.yaml")
 
 
 def get_SO_SGPE_state(init_state, temperature, N_particles, lattice, 
-    final_time, detuning=-10e6, 
-    omega_r=None, box_length=None, grid_size=40e-6, dt=1e-6, gamma=0.01, J=0, 
+    final_time, trap, detuning=-10e6, grid_size=40e-6, dt=1e-6, gamma=0.01, J=0, 
     monitor_every=10, a_s=100):
 
     def make_multi_vortex_state(
@@ -90,7 +89,7 @@ def get_SO_SGPE_state(init_state, temperature, N_particles, lattice,
     )
     from torchgpe_v2.bec2D.potentials import Trap, Contact
 
-    trap = Trap(omegax=omega_r, omegay=omega_r) if omega_r is not None else BoxTrap(box_length=box_length)
+    #trap = Trap(omegax=omega_r, omegay=omega_r) if omega_r is not None else BoxTrap(box_length=box_length)
     contact = Contact(a_s=a_s)
     cavity = DispersiveCavity(
                 lattice_depth=lattice,
@@ -100,7 +99,7 @@ def get_SO_SGPE_state(init_state, temperature, N_particles, lattice,
     cavity_monitor = CavityMonitor(cavity)
     
     bilayer, pots1, pots2, P1, P2 = make_bilayer(init_state, init_state, 1, 
-               omega_r=omega_r, box_length=box_length, N_particles=N_particles, grid_size=grid_size)
+               trap=trap, N_particles=N_particles, grid_size=grid_size)
     mu = estimate_mu(bilayer.layer1, [trap, contact],)
     result = propagate_bilayer_sgpe(
                 bilayer,

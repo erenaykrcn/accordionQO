@@ -15,9 +15,11 @@ parser.add_argument("--gamma", type=float, required=True)
 parser.add_argument("--VP", type=float, required=True)
 parser.add_argument("--enable_temperature", type=bool, default=True)
 parser.add_argument("--final_time", type=float, default=60e-3)
-group = parser.add_mutually_exclusive_group(required=True)
-group.add_argument("--omegar", type=float, default=None)
-group.add_argument("--box_length", type=float, default=None)
+parser.add_argument("--T_ramp_trap", type=float, default=4e-3)
+parser.add_argument("--T_ramp_TP", type=float, default=8e-3)
+parser.add_argument("--omega_initial", type=float, default=None)
+parser.add_argument("--omega_final", type=float, default=None)
+parser.add_argument("--box_length", type=float, default=None)
 args = parser.parse_args()
 
 
@@ -27,6 +29,23 @@ from torchgpe.utils import parse_config
 from utils import save_quench_run, save_state
 from torchgpe.bec2D.potentials import Contact, DispersiveCavity, Trap
 from torchgpe.bec2D.callbacks import CavityMonitor
+
+def omega_of_t(t, omega_initial, omega_final, T_ramp):
+    if t is None:
+        t = 0.0
+    if t < T_ramp:
+        return omega_initial + (omega_final - omega_initial) * t / T_ramp
+    return omega_final
+
+def lattice_ramp(t, T_ramp=8e-3, t_delay=0, VP=4):
+    if t <= t_delay:
+        return 0.0
+    if t >= t_delay + T_ramp:
+        return VP
+    x = (t - t_delay) / T_ramp
+    s = 10*x**3 - 15*x**4 + 6*x**5
+    return VP * s
+
 
 config = parse_config("config.yaml")
 
@@ -38,9 +57,12 @@ VP = args.VP
 gamma = args.gamma
 thermalization_time = args.thermalization_time
 enable_temperature = args.enable_temperature
-omegar = args.omegar
 box_length = args.box_length
 final_time = args.final_time
+omega_initial = args.omega_initial
+omega_final = args.omega_final
+T_ramp_trap = args.T_ramp_trap
+T_ramp_TP = args.T_ramp_TP
 seed = np.random.randint(1e6)
 
 
@@ -51,20 +73,23 @@ monitor_every = 100
 
 
 VP = float(VP)
-def lattice_ramp(t):
-    if t >= t_ramp*VP:
-        return VP
-    return VP * (t / (t_ramp*VP))
 def lattice_static(t):
     return VP
+
+trap = Trap(
+    omegax=lambda t: omega_of_t(t, omega_initial, omega_final, T_ramp_trap),
+    omegay=lambda t: omega_of_t(t, omega_initial, omega_final, T_ramp_trap),
+)
+trap_initial = Trap(omegax=omega_initial,omegay=omega_initial)
+lattice_ramp_ = lambda t: lattice_ramp(t, T_ramp=T_ramp_TP, t_delay=T_ramp_trap, VP=VP)
 
 
 ### Thermal State, Begin
 psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt, 
 	thermalization_time=thermalization_time, monitor_every=2000,
-    omega_r=omegar, box_length=box_length, grid_size=grid_size, N_particles=N_particles1,
+    trap=trap_initial, grid_size=grid_size, N_particles=N_particles1,
 	imaginary_steps=imaginary_steps, seed=seed
-    ) if enable_temperature else get_BEC(0, int(500), box_length=box_length, omega_r=omegar,
+    ) if enable_temperature else get_BEC(0, int(500), trap=trap_init,
         N_particles=N_particles, grid_size=grid_size)[1]
 ### Thermal State, END
 
@@ -72,8 +97,7 @@ psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt,
 # Quench, re-organization and equilibration of vortices.
 result1, cavity_monitor1 = get_SO_SGPE_state(
     psi_thermal, temperature if enable_temperature else 0, 
-    N_particles2, lattice_ramp, final_time, detuning = detuning, J=J, a_s=100,
-    omega_r=omegar, box_length=box_length, 
+    N_particles2, lattice_ramp, final_time, trap=trap, detuning = detuning, J=J, a_s=100,
     grid_size=grid_size, dt=dt, gamma=gamma if enable_temperature else 0,
     monitor_every=monitor_every)
 
@@ -84,7 +108,7 @@ save_path = save_quench_run(
     result1=result1,
     result2=result1, 
     cavity_monitor1=cavity_monitor1,
-    cavity_monitor2=cavity_monitor1, 
+    cavity_monitor2=cavity_monitor1,
     N_particles1=N_particles1,
     N_particles2=N_particles2,
     gamma=gamma,
@@ -97,5 +121,5 @@ save_path = save_quench_run(
     detuning=detuning,
     VP=VP,
     a_s=100,
-    prefix='Z_Scaling_',
+    prefix='omegaQ_Z_Scaling_',
 )
