@@ -47,7 +47,7 @@ seed = np.random.randint(1e6)
 dt = 1e-6
 t_ramp = 2e-3
 J, detuning, imaginary_steps = 0, -10e6, int(500)
-monitor_every = 20
+monitor_every = 100
 
 
 VP = float(VP)
