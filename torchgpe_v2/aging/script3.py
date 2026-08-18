@@ -17,13 +17,13 @@ parser.add_argument("--enable_temperature", type=bool, default=True)
 parser.add_argument("--final_time", type=float, default=60e-3)
 parser.add_argument("--T_ramp_trap", type=float, default=4e-3)
 parser.add_argument("--T_ramp_TP", type=float, default=8e-3)
-parser.add_argument("--omega_initial", type=float, default=None)
-parser.add_argument("--omega_final", type=float, default=None)
+parser.add_argument("--trap_initial", type=float, default=None)
+parser.add_argument("--trap_final", type=float, default=None)
 parser.add_argument("--box_length", type=float, default=None)
 args = parser.parse_args()
 
 
-from thermal import get_thermal_state
+from thermal import get_thermal_state, BoxTrap
 from SGPE_SO import get_SO_SGPE_state
 from torchgpe.utils import parse_config
 from utils import save_quench_run, save_state
@@ -59,8 +59,8 @@ thermalization_time = args.thermalization_time
 enable_temperature = args.enable_temperature
 box_length = args.box_length
 final_time = args.final_time
-omega_initial = args.omega_initial
-omega_final = args.omega_final
+trap_initial = args.trap_initial
+trap_final = args.trap_final
 T_ramp_trap = args.T_ramp_trap
 T_ramp_TP = args.T_ramp_TP
 seed = np.random.randint(1e6)
@@ -75,19 +75,33 @@ monitor_every = 100
 VP = float(VP)
 def lattice_static(t):
     return VP
+lattice_ramp_ = lambda t: lattice_ramp(t, T_ramp=T_ramp_TP, t_delay=T_ramp_TP, VP=VP)
 
+"""trap_initial, trap_final, T_ramp_trap = 70, 1000, 1e-3
 trap = Trap(
-    omegax=lambda t: omega_of_t(t, omega_initial, omega_final, T_ramp_trap),
-    omegay=lambda t: omega_of_t(t, omega_initial, omega_final, T_ramp_trap),
+    omegax=lambda t: omega_of_t(t, trap_initial, trap_final, T_ramp_trap),
+    omegay=lambda t: omega_of_t(t, trap_initial, trap_final, T_ramp_trap),
 )
-trap_initial = Trap(omegax=omega_initial,omegay=omega_initial)
-lattice_ramp_ = lambda t: lattice_ramp(t, T_ramp=T_ramp_TP, t_delay=T_ramp_trap, VP=VP)
+trap_initial = Trap(omegax=omega_initial,omegay=omega_initial)"""
+
+def L_of_t(t, L_initial=trap_initial, L_final=trap_final, T_ramp=T_ramp_trap):
+    if t is None:
+        t = 0.0
+    if t < T_ramp:
+        return L_initial + (L_final - L_initial) * t / T_ramp
+    return L_final
+trap = BoxTrap(
+    box_length=L_of_t
+)
+trap_initial_ = BoxTrap(
+    box_length=trap_initial
+)
 
 
 ### Thermal State, Begin
 psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt, 
 	thermalization_time=thermalization_time, monitor_every=2000,
-    trap=trap_initial, grid_size=grid_size, N_particles=N_particles1,
+    trap=trap_initial_, grid_size=grid_size, N_particles=N_particles1,
 	imaginary_steps=imaginary_steps, seed=seed
     ) if enable_temperature else get_BEC(0, int(500), trap=trap_init,
         N_particles=N_particles, grid_size=grid_size)[1]
@@ -97,7 +111,7 @@ psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt,
 # Quench, re-organization and equilibration of vortices.
 result1, cavity_monitor1 = get_SO_SGPE_state(
     psi_thermal, temperature if enable_temperature else 0, 
-    N_particles2, lattice_ramp, final_time, trap=trap, detuning = detuning, J=J, a_s=100,
+    N_particles2, lattice_ramp_, final_time, trap=trap, detuning = detuning, J=J, a_s=100,
     grid_size=grid_size, dt=dt, gamma=gamma if enable_temperature else 0,
     monitor_every=monitor_every)
 

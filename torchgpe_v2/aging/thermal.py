@@ -94,7 +94,7 @@ from torchgpe.utils.potentials import LinearPotential
 # Box potential
 # ============================================================
 
-class BoxTrap(LinearPotential):
+"""class BoxTrap(LinearPotential):
 
     def __init__(
         self,
@@ -128,7 +128,57 @@ class BoxTrap(LinearPotential):
         # union of x and y walls
         wall = 1.0 - (1.0 - wall_x) * (1.0 - wall_y)
 
-        return self.wall_height * wall
+        return self.wall_height * wall"""
+
+from torchgpe.utils.potentials import (
+    LinearPotential,
+    time_dependent_variable,
+    any_time_dependent_variable,
+)
+
+class BoxTrap(LinearPotential):
+
+    def __init__(
+        self,
+        box_length,
+        wall_height=1000.0,
+        wall_width=0.5e-6,
+    ):
+        super().__init__()
+
+        self.box_length = time_dependent_variable(box_length)
+        self.wall_height = time_dependent_variable(wall_height)
+        self.wall_width = time_dependent_variable(wall_width)
+
+        self.is_time_dependent = any_time_dependent_variable(
+            box_length,
+            wall_height,
+            wall_width,
+        )
+
+    def get_potential(self, X, Y, time=None):
+
+        L_phys = self.box_length(time)
+        wall_height = self.wall_height(time)
+        wall_width_phys = self.wall_width(time)
+
+
+        L = L_phys / self.gas.adim_length
+        w = wall_width_phys / self.gas.adim_length
+
+        half_L = L / 2
+
+        wall_x = 0.5 * (
+            1.0 + torch.tanh((torch.abs(X) - half_L) / w)
+        )
+
+        wall_y = 0.5 * (
+            1.0 + torch.tanh((torch.abs(Y) - half_L) / w)
+        )
+
+        wall = 1.0 - (1.0 - wall_x) * (1.0 - wall_y)
+
+        return wall_height * wall
 
 
 def get_BEC(
@@ -398,6 +448,7 @@ def get_thermal_state(
         init_state=init_state,
         wall_height=wall_height,
         wall_width=wall_width,
+        grid_size=grid_size
     )
 
     bilayer, pots1, pots2, P1, P2 = make_bilayer(
