@@ -456,6 +456,7 @@ def get_thermal_state(
         psi_init,
         seed=seed,
         trap=trap,
+        grid_size=grid_size,
         N_particles=N_particles,
         contact_as=contact_as,
         wall_height=wall_height,

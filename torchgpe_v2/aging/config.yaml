@@ -7,7 +7,7 @@ gas:
   adimensionalization_length: 780e-9
 boundaries:
   cavity_detuning: [-30e6, 0, 30] # 30
-  lattice_ramp: !eval ["linear_ramp(0, 0, 4, 20e-3)"]
+  lattice_ramp: !eval ["linear_ramp(0, 0, 4, 8e-3)"]
   lattice_static: !eval ["linear_ramp(4, 4, 4, 1e-2)"]
 potentials:
   trap:
@@ -18,7 +18,7 @@ potentials:
     cavity_decay: 150e3
     cavity_coupling: 1.95e6
     cavity_angle: 0
-    pump_angle: !eval [pi/3]
+    pump_angle: !eval [pi/2]
 initial_wavefunction:
   gaussian_sigma: 1e-6
 propagation:
