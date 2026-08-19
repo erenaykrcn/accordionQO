@@ -13,6 +13,10 @@ from torchgpe.utils.potentials import (
     time_dependent_variable,
 )
 
+import os
+import psutil
+_process = psutil.Process(os.getpid())
+
 
 class BilayerGas:
     def __init__(self, layer1, layer2):
@@ -868,6 +872,16 @@ def propagate_bilayer_sgpe(
     )
 
     for step in iterator:
+        if step % 1000 == 0:
+            rss = _process.memory_info().rss / 1024**3
+            print(
+                f"[MEM] step={step:6d}/{n_steps}, "
+                f"t={step*dt_SI*1e3:.2f} ms, "
+                f"RSS={rss:.3f} GB, "
+                f"states={len(states)}, "
+                f"alpha={len(cavity_alpha)}",
+                flush=True,
+            )
 
         time_SI = step * dt_SI
 

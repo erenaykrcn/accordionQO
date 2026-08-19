@@ -30,6 +30,13 @@ from torchgpe.utils import parse_config
 from utils import save_quench_run, save_state
 from torchgpe.bec2D.potentials import Contact, DispersiveCavity, Trap
 from torchgpe.bec2D.callbacks import CavityMonitor
+import os
+import psutil
+_process = psutil.Process(os.getpid())
+
+def print_mem(label):
+    rss = _process.memory_info().rss / 1024**3
+    print(f"[MEM] {label}: {rss:.3f} GB", flush=True)
 
 def omega_of_t(t, omega_initial, omega_final, T_ramp):
     if t is None:
@@ -102,6 +109,7 @@ trap_initial_ = BoxTrap(
 )
 
 
+print_mem("before thermal")
 ### Thermal State, Begin
 psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt, 
 	thermalization_time=thermalization_time, monitor_every=2000,
@@ -110,7 +118,7 @@ psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt,
     ) if enable_temperature else get_BEC(0, int(500), trap=trap_initial_,
         N_particles=N_particles, grid_size=grid_size)[1]
 ### Thermal State, END
-
+print_mem("after thermal")
 
 # Quench, re-organization and equilibration of vortices.
 result1, cavity_monitor1 = get_SO_SGPE_state(
@@ -118,7 +126,7 @@ result1, cavity_monitor1 = get_SO_SGPE_state(
     N_particles2, lattice_ramp_, final_time, trap=trap, detuning = detuning, J=J, a_s=100,
     grid_size=grid_size, dt=dt, gamma=gamma if enable_temperature else 0,
     monitor_every=monitor_every)
-
+print_mem("after SO")
 
 save_path = save_quench_run(
     output_dir="results",
