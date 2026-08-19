@@ -17,6 +17,7 @@ parser.add_argument("--enable_temperature", type=bool, default=True)
 parser.add_argument("--final_time", type=float, default=60e-3)
 parser.add_argument("--T_ramp_trap", type=float, default=4e-3)
 parser.add_argument("--T_ramp_TP", type=float, default=8e-3)
+parser.add_argument("--t_delay_trap_ramp", type=float, default=0)
 parser.add_argument("--trap_initial", type=float, default=None)
 parser.add_argument("--trap_final", type=float, default=None)
 parser.add_argument("--box_length", type=float, default=None)
@@ -63,6 +64,7 @@ trap_initial = args.trap_initial
 trap_final = args.trap_final
 T_ramp_trap = args.T_ramp_trap
 T_ramp_TP = args.T_ramp_TP
+t_delay_trap_ramp = args.t_delay_trap_ramp
 seed = np.random.randint(1e6)
 
 
@@ -84,11 +86,13 @@ trap = Trap(
 )
 trap_initial = Trap(omegax=omega_initial,omegay=omega_initial)"""
 
-def L_of_t(t, L_initial=trap_initial, L_final=trap_final, T_ramp=T_ramp_trap):
+def L_of_t(t, L_initial=trap_initial, L_final=trap_final, T_ramp=T_ramp_trap, t_delay_trap_ramp=t_delay_trap_ramp):
     if t is None:
         t = 0.0
-    if t < T_ramp:
-        return L_initial + (L_final - L_initial) * t / T_ramp
+    if t < t_delay_trap_ramp:
+        return L_initial
+    if t < T_ramp+t_delay:
+        return L_initial + (L_final - L_initial) * (t-t_delay_trap_ramp) / T_ramp
     return L_final
 trap = BoxTrap(
     box_length=L_of_t

@@ -250,59 +250,75 @@ def save_state(
     return output_path
 
 
-
-def plot_psi(psi, x_um, y_um,
+def plot_psi(
+    psi, x_um, y_um,
     density_mask=None,
-    density_threshold=0.05, ):
+    density_threshold=0.05,
+    show=True,
+    fig=None
+):
     X_um, Y_um = np.meshgrid(x_um, y_um, indexing="ij")
-    
+
     dens_f = (torch.abs(psi) ** 2).detach().cpu().numpy()
     phase_f = torch.angle(psi).detach().cpu().numpy()
-    
+
     extent = [x_um.min(), x_um.max(), y_um.min(), y_um.max()]
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    im2 = axes[0].imshow(dens_f, origin="lower", extent=extent, aspect="equal")
-    axes[0].set_title("Relaxed density")
-    axes[0].set_xlabel("x (µm)")
-    axes[0].set_ylabel("y (µm)")
-    axes[0].grid(False)
-    plt.colorbar(im2, ax=axes[0])
-    
-    im3 = axes[1].imshow(phase_f, origin="lower", extent=extent, aspect="equal")
-    axes[1].set_title("Relaxed phase")
-    axes[1].set_xlabel("x (µm)")
-    axes[1].set_ylabel("y (µm)")
-    plt.colorbar(im3, ax=axes[1])
-    plt.grid(False)
-    plt.tight_layout()
-    plt.show()
-    
-    
+
+    if fig is None:
+        fig0, axes0 = plt.subplots(1, 2, figsize=(10, 4))
+
+        im2 = axes0[0].imshow(
+            dens_f, origin="lower", extent=extent, aspect="equal"
+        )
+        axes0[0].set_title("Relaxed density")
+        axes0[0].set_xlabel("x (µm)")
+        axes0[0].set_ylabel("y (µm)")
+        axes0[0].grid(False)
+        plt.colorbar(im2, ax=axes0[0])
+
+        im3 = axes0[1].imshow(
+            phase_f, origin="lower", extent=extent, aspect="equal"
+        )
+        axes0[1].set_title("Relaxed phase")
+        axes0[1].set_xlabel("x (µm)")
+        axes0[1].set_ylabel("y (µm)")
+        axes0[1].grid(False)
+        plt.colorbar(im3, ax=axes0[1])
+
+        plt.tight_layout()
+
+        if show:
+            plt.show()
+
     psi_np = psi.detach().cpu().numpy()
     phase = np.angle(psi_np)
     density = np.abs(psi_np)**2
-    
+
     vort, antiv = detect_vortices_masked(
         psi,
         density_mask=density_mask,
         density_threshold=density_threshold
     )
-    
-    # Convert plaquette-center indices [row, col] to physical coordinates
+
     x_v = np.interp(vort[:, 1], np.arange(len(x_um)), x_um)
     y_v = np.interp(vort[:, 0], np.arange(len(y_um)), y_um)
-    
+
     x_av = np.interp(antiv[:, 1], np.arange(len(x_um)), x_um)
     y_av = np.interp(antiv[:, 0], np.arange(len(y_um)), y_um)
-    
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    
+
+    if fig is None:
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    else:
+        fig.clear()
+        axes = fig.subplots(1, 2)
+
     im0 = axes[0].imshow(
         density,
         origin="lower",
         extent=extent,
         aspect="equal",
     )
+
     axes[0].scatter(
         x_v, y_v,
         s=12,
@@ -317,13 +333,21 @@ def plot_psi(psi, x_um, y_um,
         color="yellow",
         label=f"antivortex ({len(antiv)})",
     )
+
     axes[0].set_title("Density with vortices")
     axes[0].set_xlabel("x (µm)")
     axes[0].set_ylabel("y (µm)")
     axes[0].legend()
-    
-    im1 = axes[1].imshow(phase_f, origin="lower", extent=extent, aspect="equal")
-    
+
+    im1 = axes[1].imshow(
+        phase_f,
+        origin="lower",
+        extent=extent,
+        aspect="equal",
+        vmin=-np.pi,
+        vmax=np.pi,
+    )
+
     axes[1].scatter(
         x_v, y_v,
         s=12,
@@ -336,15 +360,23 @@ def plot_psi(psi, x_um, y_um,
         marker="x",
         color="yellow",
     )
+
     axes[1].set_title("Phase with vortices")
     axes[1].set_xlabel("x (µm)")
     axes[1].set_ylabel("y (µm)")
+
     axes[0].grid(False)
     axes[1].grid(False)
+
     plt.colorbar(im0, ax=axes[0])
     plt.colorbar(im1, ax=axes[1], label="Phase")
-    plt.tight_layout()
-    plt.show()
+
+    fig.tight_layout()
+
+    if show:
+        plt.show()
+
+    return fig
     
 
 def phase_wrap(x):
