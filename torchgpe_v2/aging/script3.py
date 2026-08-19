@@ -107,7 +107,7 @@ psi_thermal = get_thermal_state(temperature, gamma=gamma, J=J, dt=dt,
 	thermalization_time=thermalization_time, monitor_every=2000,
     trap=trap_initial_, grid_size=grid_size, N_particles=N_particles1,
 	imaginary_steps=imaginary_steps, seed=seed
-    ) if enable_temperature else get_BEC(0, int(500), trap=trap_init,
+    ) if enable_temperature else get_BEC(0, int(500), trap=trap_initial_,
         N_particles=N_particles, grid_size=grid_size)[1]
 ### Thermal State, END
 
