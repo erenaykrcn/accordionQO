@@ -91,7 +91,7 @@ def L_of_t(t, L_initial=trap_initial, L_final=trap_final, T_ramp=T_ramp_trap, t_
         t = 0.0
     if t < t_delay_trap_ramp:
         return L_initial
-    if t < T_ramp+t_delay:
+    if t < T_ramp+t_delay_trap_ramp:
         return L_initial + (L_final - L_initial) * (t-t_delay_trap_ramp) / T_ramp
     return L_final
 trap = BoxTrap(
