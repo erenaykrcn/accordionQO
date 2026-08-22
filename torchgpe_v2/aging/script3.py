@@ -42,6 +42,66 @@ from torchgpe_v2.bec2D.bilayer_v5 import (
     make_momentum_projector,
 )
 
+def get_or_make_thermal_state(
+    temperature,
+    N_particles,
+    gamma,
+    thermalization_time,
+    grid_size,
+    trap,
+    cavity_monitor,
+    seed,
+    imaginary_steps=500,
+    cache_dir="thermal_states",
+):
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Make a filename encoding the important preparation parameters.
+    cache_path = cache_dir / (
+        f"thermal_"
+        f"T{temperature:g}_"
+        f"N{N_particles}_"
+        f"gamma{gamma:g}_"
+        f"t{thermalization_time:g}_"
+        f"grid{grid_size:g}_"
+        f"L{box_length:g}.pt"
+    )
+
+    if cache_path.exists():
+        print(f"[THERMAL] Loading cached state: {cache_path}", flush=True)
+
+        # Load onto CPU first; make_bilayer can then put/use it as appropriate.
+        state = torch.load(cache_path, map_location="cpu")
+
+    else:
+        print(f"[THERMAL] No cached state found.", flush=True)
+        print(f"[THERMAL] Generating: {cache_path}", flush=True)
+
+        result = get_thermal_state(
+            temperature,
+            thermalization_time=thermalization_time,
+            grid_size=grid_size,
+            N_particles=N_particles,
+            monitor_cavity=cavity_monitor,
+            monitor_every=1000,
+            gamma=gamma,
+            contact_as=100,
+            trap=trap,
+            seed=seed,
+            imaginary_steps=imaginary_steps,
+            J=0,
+        )
+
+        state = result["states"][-1]
+
+        # Save CPU copy so the cache isn't tied to a particular GPU/device.
+        torch.save(state.detach().cpu(), cache_path)
+
+        print(f"[THERMAL] Saved state: {cache_path}", flush=True)
+
+    return state
+
 def print_mem(label):
     rss = _process.memory_info().rss / 1024**3
     print(f"[MEM] {label}: {rss:.3f} GB", flush=True)
@@ -154,12 +214,26 @@ def call_SO(trap_ramp_time, enable_temp, temperature, gamma, final_length=12.5e-
 
 
     print_mem("before thermal")
-    state = get_thermal_state(temperature, thermalization_time=thermalization_time,
-                 grid_size=grid_size, N_particles=N_particles, monitor_cavity=cavity_monitor,
-                monitor_every=1000, gamma=gamma, contact_as=100, trap=trap_initial_, seed=seed,
-                imaginary_steps=imaginary_steps, J=0, 
-                )['states'][-1] if enable_temperature else get_BEC(0, int(500), trap=trap_initial_,
-        N_particles=N_particles, grid_size=grid_size)[1]
+    if enable_temperature:
+        state = get_or_make_thermal_state(
+            temperature=temperature,
+            N_particles=N_particles,
+            gamma=gamma,
+            thermalization_time=thermalization_time,
+            grid_size=grid_size,
+            trap=trap_initial_,
+            cavity_monitor=cavity_monitor,
+            seed=seed,
+            imaginary_steps=imaginary_steps,
+        )
+    else:
+        state = get_BEC(
+            0,
+            int(500),
+            trap=trap_initial_,
+            N_particles=N_particles,
+            grid_size=grid_size,
+        )[1]
     
     print_mem("after thermal")
     
