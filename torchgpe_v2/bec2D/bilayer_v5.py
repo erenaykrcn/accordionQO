@@ -156,6 +156,10 @@ def propagate_bilayer(
     potentials1 = [] if potentials1 is None else potentials1
     potentials2 = [] if potentials2 is None else potentials2
 
+    import inspect
+    for p in potentials1:
+        print(type(p).__name__, inspect.getfile(type(p)))
+
     gas1 = bilayer.layer1
     gas2 = bilayer.layer2
 
