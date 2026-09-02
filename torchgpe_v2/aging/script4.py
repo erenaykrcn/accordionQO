@@ -98,6 +98,9 @@ from torchgpe_v2.bec2D.bilayer_v5 import (
 # Parameters
 # ============================================================
 
+#monitor_every, monitor_every_th = (50, 1000)
+monitor_every, monitor_every_th = (100000, 100000)
+
 temperature1 = args.temperature1
 temperature2 = args.temperature2
 
@@ -302,7 +305,7 @@ def get_or_make_thermal_state(
         N_particles=N_particles,
 
         monitor_cavity=cavity_monitor,
-        monitor_every=1000,
+        monitor_every=monitor_every_th,
 
         gamma=gamma,
         contact_as=100,
@@ -766,7 +769,7 @@ def qTemp_SO(
 
             monitor_cavity=cavity1,
 
-            monitor_every=50,
+            monitor_every=monitor_every,
         )
 
 
@@ -955,7 +958,7 @@ def qTemp_SO(
 
         monitor_cavity=cavity2,
 
-        monitor_every=50,
+        monitor_every=monitor_every,
     )
 
 
