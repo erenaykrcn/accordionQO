@@ -1040,16 +1040,25 @@ def propagate_bilayer_sgpe(
             if monitor_alpha:
                 t_now = (step + 1) * dt_SI
 
-                cavity_times.append(
-                    t_now
+                alpha_now = monitor_cavity.get_alpha(
+                    gas1.psi,
+                    time=t_now,
                 )
 
-                cavity_alpha.append(
-                    monitor_cavity.get_alpha(
-                        gas1.psi,
-                        time=t_now,
-                    ).detach().cpu()
-                )
+                if step == 0:
+                    print(
+                        "[DEBUG alpha]",
+                        "shape =", alpha_now.shape,
+                        "numel =", alpha_now.numel(),
+                        "dtype =", alpha_now.dtype,
+                        "device =", alpha_now.device,
+                        "size MB =",
+                        alpha_now.numel() * alpha_now.element_size() / 1024**2,
+                        flush=True,
+                    )
+
+                cavity_times.append(t_now)
+                cavity_alpha.append(alpha_now.detach().cpu())
 
     # ---------------------------------------------------------
     # Potential cleanup
