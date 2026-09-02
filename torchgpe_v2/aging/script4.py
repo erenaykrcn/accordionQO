@@ -38,6 +38,7 @@ parser.add_argument("--trap_initial", type=float, default=None)
 parser.add_argument("--trap_final", type=float, default=None)
 
 parser.add_argument("--box_length", type=float, default=15e-6)
+parser.add_argument("--final_length", type=float, default=15e-6)
 
 # If supplied, try to skip the first SO propagation.
 # If the requested cache does not exist, SO is performed and saved.
@@ -82,6 +83,7 @@ from torchgpe.bec2D.potentials import (
     Contact,
     DispersiveCavity,
 )
+from torchgpe.bec2D.potentials import Contact, DispersiveCavity, Trap
 
 from torchgpe.bec2D.callbacks import CavityMonitor
 
@@ -118,6 +120,7 @@ T_ramp_TP = args.T_ramp_TP
 t_delay_temp1 = args.t_delay_temp1
 
 box_length = args.box_length
+final_length = args.final_length
 
 dt = 1e-6
 J = 0
@@ -179,6 +182,18 @@ def lattice_ramp(
 def lattice_static(t, VP=4):
     return VP
 
+def omega_of_t(t, omega_initial, omega_final, T_ramp, t_delay=0):
+    if t is None:
+        t = 0.0
+    if t <= t_delay:
+        return 0.0
+    if t >= t_delay + T_ramp:
+        return omega_final
+    x = (t - t_delay) / T_ramp
+    s = 10*x**3 - 15*x**4 + 6*x**5
+    diff = omega_final - omega_initial
+    return  diff * s + omega_initial
+
 
 # Ramp starts immediately.
 lattice_ramp_ = lambda t: lattice_ramp(
@@ -193,6 +208,7 @@ lattice_ramp_ = lambda t: lattice_ramp(
 trap_initial_ = BoxTrap(
     box_length=box_length
 )
+#trap_initial_ = Trap(omegax=box_length, omegay=box_length)
 
 
 # ============================================================
@@ -439,6 +455,12 @@ def qTemp_SO(
     trap_dyn = BoxTrap(
         box_length=box_length
     )
+    #trap_dyn = Trap(
+        #omegax=lambda t: omega_of_t(t, box_length, 
+            #final_length, 0, t_delay=0),
+        #omegay=lambda t: omega_of_t(t, box_length, 
+            #final_length, 0, t_delay=0),
+    #)
 
 
     # ========================================================

@@ -9,7 +9,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--temperature", type=float, required=True)
 parser.add_argument("--N_particles1", type=int, required=True)
 parser.add_argument("--N_particles2", type=int, required=True)
-parser.add_argument("--final_length", type=float, default=12.5e-6)
 parser.add_argument("--grid_size", type=float, default=20e-6)
 parser.add_argument("--thermalization_time", type=float, required=True)
 parser.add_argument("--gamma", type=float, required=True)
@@ -20,6 +19,7 @@ parser.add_argument("--T_ramp_trap", type=float, default=4e-3)
 parser.add_argument("--T_ramp_TP", type=float, default=8e-3)
 parser.add_argument("--t_delay_trap_ramp", type=float, default=0)
 parser.add_argument("--box_length", type=float, default=15e-6)
+parser.add_argument("--final_length", type=float, default=12.5e-6)
 args = parser.parse_args()
 
 
@@ -106,12 +106,26 @@ def print_mem(label):
     rss = _process.memory_info().rss / 1024**3
     print(f"[MEM] {label}: {rss:.3f} GB", flush=True)
 
-def omega_of_t(t, omega_initial, omega_final, T_ramp):
+def omega_of_t(t, omega_initial, omega_final, T_ramp, t_delay=0):
     if t is None:
         t = 0.0
-    if t < T_ramp:
-        return omega_initial + (omega_final - omega_initial) * t / T_ramp
-    return omega_final
+    if t <= t_delay:
+        return 0.0
+    if t >= t_delay + T_ramp:
+        return omega_final
+    x = (t - t_delay) / T_ramp
+    s = 10*x**3 - 15*x**4 + 6*x**5
+    diff = omega_final - omega_initial
+    return  diff * s + omega_initial
+
+def L_of_t(t, L_initial=15e-6, L_final=15e-6, T_ramp=10e-3, t_delay_trap_ramp=0):
+    if t is None:
+        t = 0.0
+    if t < t_delay_trap_ramp:
+        return L_initial
+    if t < T_ramp+t_delay_trap_ramp:
+        return L_initial + (L_final - L_initial) * (t-t_delay_trap_ramp) / T_ramp
+    return L_final
 
 def lattice_ramp(t, T_ramp=8e-3, t_delay=0, VP=4):
     if t <= t_delay:
@@ -153,27 +167,12 @@ def lattice_static(t):
     return VP
 lattice_ramp_ = lambda t: lattice_ramp(t, T_ramp=T_ramp_TP, t_delay=T_ramp_TP, VP=VP)
 
-"""trap_initial, trap_final, T_ramp_trap = 70, 1000, 1e-3
-trap = Trap(
-    omegax=lambda t: omega_of_t(t, trap_initial, trap_final, T_ramp_trap),
-    omegay=lambda t: omega_of_t(t, trap_initial, trap_final, T_ramp_trap),
-)
-trap_initial = Trap(omegax=omega_initial,omegay=omega_initial)"""
 
-def L_of_t(t, L_initial=15e-6, L_final=15e-6, T_ramp=T_ramp_trap, t_delay_trap_ramp=t_delay_trap_ramp):
-    if t is None:
-        t = 0.0
-    if t < t_delay_trap_ramp:
-        return L_initial
-    if t < T_ramp+t_delay_trap_ramp:
-        return L_initial + (L_final - L_initial) * (t-t_delay_trap_ramp) / T_ramp
-    return L_final
-trap = BoxTrap(
-    box_length=L_of_t
-)
+
 trap_initial_ = BoxTrap(
     box_length=box_length
 )
+trap_initial_ = Trap(omegax=box_length, omegay=box_length)
 
 
 config = parse_config("config.yaml")
@@ -247,6 +246,12 @@ def call_SO(trap_ramp_time, enable_temp, temperature, gamma, final_length=12.5e-
 
     trap_dyn = BoxTrap(box_length=lambda t: L_of_t(t, box_length, 
         final_length, trap_ramp_time, t_delay=t_delay))
+    trap_dyn = Trap(
+            omegax=lambda t: omega_of_t(t, box_length, final_length, trap_ramp_time, t_delay=t_delay),
+            omegay=lambda t: omega_of_t(t, box_length, final_length, trap_ramp_time, t_delay=t_delay),
+        )
+
+
     bilayer, pots1, pots2, P1, P2 = make_bilayer(state, state, 1, trap=trap_dyn,
                 N_particles=N_particles, grid_size=grid_size)
     mu = estimate_mu(bilayer.layer1, [trap_dyn, contact])
