@@ -40,6 +40,13 @@ parser.add_argument("--trap_final", type=float, default=None)
 parser.add_argument("--box_length", type=float, default=15e-6)
 parser.add_argument("--final_length", type=float, default=15e-6)
 
+
+parser.add_argument("--t_probe_delay", type=float, default=0)
+parser.add_argument("--f_probe_min", type=float, default=0)
+parser.add_argument("--f_probe_max", type=float, default=0)
+parser.add_argument("--probe_amplitude", type=float, default=0)
+parser.add_argument("--probe_duration", type=float, default=0)
+
 # If supplied, try to skip the first SO propagation.
 # If the requested cache does not exist, SO is performed and saved.
 parser.add_argument(
@@ -98,8 +105,8 @@ from torchgpe_v2.bec2D.bilayer_v5 import (
 # Parameters
 # ============================================================
 
-#monitor_every, monitor_every_th = (50, 1000)
-monitor_every, monitor_every_th = (100000, 100000)
+monitor_every, monitor_every_th = (50, 1000)
+#monitor_every, monitor_every_th = (100000, 100000)
 
 temperature1 = args.temperature1
 temperature2 = args.temperature2
@@ -125,12 +132,20 @@ t_delay_temp1 = args.t_delay_temp1
 box_length = args.box_length
 final_length = args.final_length
 
+t_probe_delay = args.t_probe_delay
+f_probe_min = args.f_probe_min
+f_probe_max = args.f_probe_max
+probe_amplitude = args.probe_amplitude
+probe_duration = args.probe_duration
+
 dt = 1e-6
 J = 0
 detuning = -10e6
 imaginary_steps = 500
 
 seed = np.random.randint(1_000_000)
+torch.manual_seed(seed)
+np.random.seed(seed)
 
 config = parse_config("config.yaml")
 
@@ -196,6 +211,64 @@ def omega_of_t(t, omega_initial, omega_final, T_ramp, t_delay=0):
     s = 10*x**3 - 15*x**4 + 6*x**5
     diff = omega_final - omega_initial
     return  diff * s + omega_initial
+
+def cavity_probe_chirp(
+    t,
+    t_probe_delay,
+    f_probe_min,
+    f_probe_max,
+    amplitude,
+    probe_duration,
+    phase=0.0,
+):
+    if t < t_probe_delay:
+        return 0.0
+
+    tau = t - t_probe_delay
+
+    if tau > probe_duration:
+        return 0.0
+
+    k = (f_probe_max - f_probe_min) / probe_duration
+
+    phase_t = 2 * np.pi * (
+        f_probe_min * tau
+        + 0.5 * k * tau**2
+    ) + phase
+
+    return amplitude * np.cos(phase_t)
+
+
+def cavity_probe_step(
+    t,
+    t_probe_delay,
+    amplitude,
+    probe_duration,
+):  
+    if t < t_probe_delay:
+        return 0.0
+
+    tau = t - t_probe_delay
+
+    if tau > probe_duration:
+        return 0.0
+    return amplitude
+
+
+cavity_probe = lambda t: cavity_probe_chirp(
+    t,
+    t_probe_delay=t_probe_delay,
+    f_probe_min=f_probe_min,
+    f_probe_max=f_probe_max,
+    amplitude=probe_amplitude,
+    probe_duration=probe_duration,
+)
+cavity_probe = lambda t: cavity_probe_step(
+    t,
+    t_probe_delay=t_probe_delay,
+    amplitude=probe_amplitude,
+    probe_duration=probe_duration,
+)
 
 
 # Ramp starts immediately.
@@ -692,7 +765,7 @@ def qTemp_SO(
             state_thermal,
             state_thermal,
 
-            1,
+            seed,
 
             trap=trap_dyn,
 
@@ -864,6 +937,7 @@ def qTemp_SO(
     cavity2 = DispersiveCavity(
         lattice_depth=lattice_static_,
         cavity_detuning=detuning,
+        cavity_probe=cavity_probe,
         **config["potentials"]["cavity"],
     )
 
@@ -881,7 +955,7 @@ def qTemp_SO(
         state,
         state,
 
-        1,
+        seed,
 
         trap=trap_dyn,
 

@@ -5,6 +5,16 @@ import h5py
 import torch
 import numpy as np
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "0"):
+        return False
+    raise argparse.ArgumentTypeError("Expected a boolean value.")
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--temperature", type=float, required=True)
 parser.add_argument("--N_particles1", type=int, required=True)
@@ -19,6 +29,7 @@ parser.add_argument("--T_ramp_trap", type=float, default=4e-3)
 parser.add_argument("--T_ramp_TP", type=float, default=8e-3)
 parser.add_argument("--t_delay_trap_ramp", type=float, default=0)
 parser.add_argument("--box_length", type=float, default=15e-6)
+parser.add_argument("--box_trap", type=str2bool, required=True)
 parser.add_argument("--final_length", type=float, default=12.5e-6)
 args = parser.parse_args()
 
@@ -110,7 +121,7 @@ def omega_of_t(t, omega_initial, omega_final, T_ramp, t_delay=0):
     if t is None:
         t = 0.0
     if t <= t_delay:
-        return 0.0
+        return omega_initial
     if t >= t_delay + T_ramp:
         return omega_final
     x = (t - t_delay) / T_ramp
@@ -152,13 +163,14 @@ final_time = args.final_time
 T_ramp_trap = args.T_ramp_trap
 T_ramp_TP = args.T_ramp_TP
 final_length = args.final_length
+box_trap = args.box_trap
 t_delay_trap_ramp = args.t_delay_trap_ramp
 seed = np.random.randint(1e6)
 
 
 dt = 1e-6
 t_ramp = 2e-3
-J, detuning, imaginary_steps = 0, -10e6, int(500)
+J, detuning, imaginary_steps = 0, -10e6, int(1000)
 monitor_every = 500
 
 
@@ -169,11 +181,13 @@ lattice_ramp_ = lambda t: lattice_ramp(t, T_ramp=T_ramp_TP, t_delay=T_ramp_TP, V
 
 
 
-trap_initial_ = BoxTrap(
-    box_length=box_length
-)
-trap_initial_ = Trap(omegax=box_length, omegay=box_length)
 
+trap_initial_ = Trap(omegax=box_length, omegay=box_length)
+if box_trap:
+    print('Using BoxTrap')
+    trap_initial_ = BoxTrap(
+        box_length=box_length
+    )
 
 config = parse_config("config.yaml")
 contact = Contact(a_s=100)
@@ -244,12 +258,15 @@ def call_SO(trap_ramp_time, enable_temp, temperature, gamma, final_length=12.5e-
     )
     cavity_monitor = CavityMonitor(cavity)
 
-    trap_dyn = BoxTrap(box_length=lambda t: L_of_t(t, box_length, 
-        final_length, trap_ramp_time, t_delay=t_delay))
+
     trap_dyn = Trap(
             omegax=lambda t: omega_of_t(t, box_length, final_length, trap_ramp_time, t_delay=t_delay),
             omegay=lambda t: omega_of_t(t, box_length, final_length, trap_ramp_time, t_delay=t_delay),
         )
+    if box_trap:
+        print('Using BoxTrap')
+        trap_dyn = BoxTrap(box_length=lambda t: L_of_t(t, box_length, 
+            final_length, trap_ramp_time, t_delay=t_delay))
 
 
     bilayer, pots1, pots2, P1, P2 = make_bilayer(state, state, 1, trap=trap_dyn,
