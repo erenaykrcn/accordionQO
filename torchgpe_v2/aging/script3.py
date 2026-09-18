@@ -297,7 +297,7 @@ def call_SO(trap_ramp_time, enable_temp, temperature, gamma, final_length=12.5e-
                 leave_progress_bar=False,
                 
                 monitor_cavity=cavity,
-                monitor_every=50,
+                monitor_every=monitor_every,
     )
 
     """result1, cavity_monitor1 = get_SO_SGPE_state(
