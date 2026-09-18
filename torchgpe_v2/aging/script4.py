@@ -772,7 +772,7 @@ def qTemp_SO(
             seed,
 
             trap=trap_dyn,
-
+            N_grid=N_grid,
             N_particles=N_particles,
 
             grid_size=grid_size,
@@ -962,6 +962,7 @@ def qTemp_SO(
         seed,
 
         trap=trap_dyn,
+        N_grid=N_grid,
 
         N_particles=N_particles,
 
