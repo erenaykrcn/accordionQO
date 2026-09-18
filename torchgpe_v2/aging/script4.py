@@ -40,6 +40,8 @@ parser.add_argument("--trap_final", type=float, default=None)
 parser.add_argument("--box_length", type=float, default=15e-6)
 parser.add_argument("--final_length", type=float, default=15e-6)
 
+parser.add_argument("--N_grid", type=float, default=256)
+
 
 parser.add_argument("--t_probe_delay", type=float, default=0)
 parser.add_argument("--f_probe_min", type=float, default=0)
@@ -128,6 +130,7 @@ T_ramp_trap = args.T_ramp_trap
 T_ramp_TP = args.T_ramp_TP
 
 t_delay_temp1 = args.t_delay_temp1
+N_grid = args.N_grid
 
 box_length = args.box_length
 final_length = args.final_length
@@ -302,6 +305,7 @@ def get_or_make_thermal_state(
     cavity_monitor,
     seed,
     imaginary_steps=500,
+    N_grid=256,
     cache_dir="thermal_states",
 ):
     """
@@ -382,6 +386,7 @@ def get_or_make_thermal_state(
 
         gamma=gamma,
         contact_as=100,
+        N_grid=N_grid,
 
         trap=trap,
 
@@ -732,6 +737,7 @@ def qTemp_SO(
                 cavity_monitor=thermal_cavity_monitor,
 
                 seed=seed,
+                N_grid=N_grid,
 
                 imaginary_steps=imaginary_steps,
 
@@ -743,11 +749,9 @@ def qTemp_SO(
             state_thermal = get_BEC(
                 0,
                 500,
-
+                N_grid=N_grid,
                 trap=trap_initial_,
-
                 N_particles=N_particles,
-
                 grid_size=grid_size,
             )[1]
 
@@ -1103,7 +1107,7 @@ save_path = save_quench_run(
     J=J,
 
     detuning=detuning,
-
+    N_grid=N_grid,
     VP=VP,
 
     a_s=100,

@@ -191,6 +191,7 @@ def get_BEC(
     init_state=None,
     wall_height=1000.0,
     wall_width=0.5e-6,
+    N_grid=256,
     background = "gaussian",
 
 ):
@@ -198,6 +199,7 @@ def get_BEC(
     bec = Gas(
         N_particles=N_particles,
         grid_size=grid_size,
+        N_grid=N_grid,
     )
     sigma_adim = 6e-6 / bec.adim_length
     vortex_length = 10e-6
@@ -258,13 +260,14 @@ def make_bilayer(
     contact_as=100,
     wall_height=1000.0,
     wall_width=0.5e-6,
+    N_grid=256,
 ):
     torch.manual_seed(seed)
     np.random.seed(seed)
 
     gas_kwargs = dict(
         N_particles=N_particles,
-        N_grid=256,
+        N_grid=N_grid,
         grid_size=grid_size,
         normalize_on_assignment=False,
     )
@@ -436,6 +439,7 @@ def get_thermal_state(
     contact_as=100,
     wall_height=1000.0,
     wall_width=0.5e-6,
+    N_grid=256,
     seed=None,
 ):
 
@@ -448,6 +452,7 @@ def get_thermal_state(
         init_state=init_state,
         wall_height=wall_height,
         wall_width=wall_width,
+        N_grid=N_grid,
         grid_size=grid_size
     )
 
@@ -461,6 +466,7 @@ def get_thermal_state(
         contact_as=contact_as,
         wall_height=wall_height,
         wall_width=wall_width,
+        N_grid=N_grid
     )
 
     mu = estimate_mu(
