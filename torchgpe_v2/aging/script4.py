@@ -56,6 +56,7 @@ parser.add_argument("--trap_final", type=float, default=None)
 parser.add_argument("--box_length", type=float, default=15e-6)
 parser.add_argument("--final_length", type=float, default=15e-6)
 parser.add_argument("--atomic_detuning", type=float, default=-76.6e9)
+parser.add_argument("--cavity_detuning", type=float, default=-10e6)
 parser.add_argument("--wall_height", type=float, default=1000)
 
 parser.add_argument("--N_grid", type=float, default=256)
@@ -185,6 +186,7 @@ box_length = args.box_length
 final_length = args.final_length
 T_ramp_trap = args.T_ramp_trap
 atomic_detuning = args.atomic_detuning
+cavity_detuning = args.cavity_detuning
 
 t_probe_delay = args.t_probe_delay
 f_probe_min = args.f_probe_min
@@ -200,7 +202,7 @@ if a_s2 == -1:
 
 dt = args.time_step
 J = 0
-detuning = -4e6
+detuning = cavity_detuning
 imaginary_steps = 500
 
 seed = np.random.randint(1_000_000)
