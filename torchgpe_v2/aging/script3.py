@@ -20,6 +20,7 @@ parser.add_argument("--temperature", type=float, required=True)
 parser.add_argument("--N_particles1", type=int, required=True)
 parser.add_argument("--N_particles2", type=int, required=True)
 parser.add_argument("--grid_size", type=float, default=20e-6)
+parser.add_argument("--a_s", type=float, default=100)
 parser.add_argument("--thermalization_time", type=float, required=True)
 parser.add_argument("--gamma", type=float, required=True)
 parser.add_argument("--VP", type=float, required=True)
@@ -53,63 +54,127 @@ from torchgpe_v2.bec2D.bilayer_v5 import (
     make_momentum_projector,
 )
 
+
+# ============================================================
+# Thermal-state cache
+# ============================================================
+
 def get_or_make_thermal_state(
     temperature,
     N_particles,
     gamma,
     thermalization_time,
     grid_size,
+    box_length,
     trap,
     cavity_monitor,
     seed,
     imaginary_steps=500,
+    N_grid=256,
     cache_dir="thermal_states",
 ):
-    cache_dir = Path(cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    """
+    Load the thermal state if it already exists.
 
-    # Make a filename encoding the important preparation parameters.
+    Otherwise:
+        1. thermalize
+        2. take final state
+        3. save final state
+        4. return it
+    """
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
     cache_path = cache_dir / (
         f"thermal_"
         f"T{temperature:g}_"
         f"N{N_particles}_"
         f"gamma{gamma:g}_"
-        f"t{thermalization_time:g}_"
-        f"grid{grid_size:g}_"
-        f"L{box_length:g}.pt"
+        f"therm{thermalization_time * 1e3:g}ms_"
+        f"grid{grid_size * 1e6:g}um_"
+        f"box{box_length * 1e6:g}um.pt"
     )
 
+    # --------------------------------------------------------
+    # Cached state exists
+    # --------------------------------------------------------
+
     if cache_path.exists():
-        print(f"[THERMAL] Loading cached state: {cache_path}", flush=True)
 
-        # Load onto CPU first; make_bilayer can then put/use it as appropriate.
-        state = torch.load(cache_path, map_location="cpu")
-
-    else:
-        print(f"[THERMAL] No cached state found.", flush=True)
-        print(f"[THERMAL] Generating: {cache_path}", flush=True)
-
-        result = get_thermal_state(
-            temperature,
-            thermalization_time=thermalization_time,
-            grid_size=grid_size,
-            N_particles=N_particles,
-            monitor_cavity=cavity_monitor,
-            monitor_every=1000,
-            gamma=gamma,
-            contact_as=100,
-            trap=trap,
-            seed=seed,
-            imaginary_steps=imaginary_steps,
-            J=0,
+        print(
+            f"[THERMAL] Loading cached state:\n"
+            f"          {cache_path}",
+            flush=True,
         )
 
-        state = result["states"][-1]
+        state = torch.load(
+            cache_path,
+            map_location="cpu",
+            weights_only=False,
+        )
 
-        # Save CPU copy so the cache isn't tied to a particular GPU/device.
-        torch.save(state.detach().cpu(), cache_path)
+        return state
 
-        print(f"[THERMAL] Saved state: {cache_path}", flush=True)
+    # --------------------------------------------------------
+    # Otherwise generate thermal state
+    # --------------------------------------------------------
+
+    print(
+        "[THERMAL] No cached state found.",
+        flush=True,
+    )
+
+    print(
+        f"[THERMAL] Generating thermal state:\n"
+        f"          {cache_path}",
+        flush=True,
+    )
+
+    print(
+        f"[THERMAL] Seed = {seed}",
+        flush=True,
+    )
+
+    result = get_thermal_state(
+        temperature,
+        thermalization_time=thermalization_time,
+
+        grid_size=grid_size,
+        N_particles=N_particles,
+
+        monitor_cavity=cavity_monitor,
+        monitor_every=1000,
+
+        gamma=gamma,
+        contact_as=100,
+        N_grid=N_grid,
+
+        trap=trap,
+
+        seed=seed,
+
+        imaginary_steps=imaginary_steps,
+
+        J=0,
+    )
+
+    state = result["states"][-1]
+
+    # Store on CPU so cache does not depend on GPU/device.
+    torch.save(
+        state.detach().cpu(),
+        cache_path,
+    )
+
+    print(
+        f"[THERMAL] Saved thermal state:\n"
+        f"          {cache_path}",
+        flush=True,
+    )
 
     return state
 
@@ -165,6 +230,7 @@ T_ramp_TP = args.T_ramp_TP
 final_length = args.final_length
 box_trap = args.box_trap
 t_delay_trap_ramp = args.t_delay_trap_ramp
+a_s = args.a_s
 seed = np.random.randint(1e6)
 
 
@@ -190,8 +256,8 @@ if box_trap:
     )
 
 config = parse_config("config.yaml")
-contact = Contact(a_s=100)
-detuning = -10e6
+contact = Contact(a_s=a_s)
+
 
 def L_of_t(t, L_initial, L_final, T_ramp, t_delay=0):
     if t is None:
@@ -234,6 +300,7 @@ def call_SO(trap_ramp_time, enable_temp, temperature, gamma, final_length=12.5e-
             gamma=gamma,
             thermalization_time=thermalization_time,
             grid_size=grid_size,
+            box_length=box_length,
             trap=trap_initial_,
             cavity_monitor=cavity_monitor,
             seed=seed,
@@ -336,6 +403,7 @@ save_path = save_quench_run(
     J=J,
     detuning=detuning,
     VP=VP,
-    a_s=100,
+    a_s=a_s,
+    N_grid=256,
     prefix='Box_Quench_',
 )

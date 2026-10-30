@@ -14,8 +14,8 @@ potentials:
     omegax: 50
     omegay: 50
   cavity:
-    atomic_detuning: -76.6e9
-    cavity_decay: 150e3
+    atomic_detuning: -76.6e9 #-200e9 
+    cavity_decay: 150e3 #150e3
     cavity_coupling: 1.95e6
     cavity_angle: 0
     pump_angle: !eval [pi/2]

@@ -11,7 +11,6 @@ def to_numpy(x):
         return x.detach().cpu().numpy()
     return np.asarray(x)
 
-
     
 def save_quench_run(
     output_dir,
@@ -252,6 +251,19 @@ def save_state(
     print(f"Saved run {run_id} to: {output_path}")
 
     return output_path
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+from matplotlib.colors import SymLogNorm
+
+
+def make_density_norm(data, log_cutoff, cutoff_is_fraction, linscale):
+    """Linear below the cutoff, logarithmic above it."""
+    if log_cutoff is None:
+        return None
+    vmax = data.max()
+    linthresh = log_cutoff * vmax if cutoff_is_fraction else log_cutoff
+    return SymLogNorm(linthresh=linthresh, linscale=linscale, vmin=0, vmax=vmax)
 
 
 def plot_psi(
@@ -259,22 +271,26 @@ def plot_psi(
     density_mask=None,
     density_threshold=0.05,
     show=True,
-    fig=None
+    fig=None,
+    log_cutoff=None,           # None = fully linear; otherwise linear below, log above
+    cutoff_is_fraction=True,   # True: cutoff is a fraction of max density; False: absolute value
+    linscale=1.0,              # how much colorbar space the linear part takes (in decades)
+    override_antivort=None, override_vort=None,
 ):
-    X_um, Y_um = np.meshgrid(x_um, y_um, indexing="ij")
-
     dens_f = (torch.abs(psi) ** 2).detach().cpu().numpy()
     phase_f = torch.angle(psi).detach().cpu().numpy()
 
     extent = [x_um.min(), x_um.max(), y_um.min(), y_um.max()]
+    dens_norm = make_density_norm(dens_f, log_cutoff, cutoff_is_fraction, linscale)
+    suffix = ""
 
     if fig is None:
         fig0, axes0 = plt.subplots(1, 2, figsize=(10, 4))
 
         im2 = axes0[0].imshow(
-            dens_f, origin="lower", extent=extent, aspect="equal"
+            dens_f, origin="lower", extent=extent, aspect="equal", norm=dens_norm
         )
-        axes0[0].set_title("Relaxed density")
+        axes0[0].set_title("Density" + suffix)
         axes0[0].set_xlabel("x (µm)")
         axes0[0].set_ylabel("y (µm)")
         axes0[0].grid(False)
@@ -283,7 +299,7 @@ def plot_psi(
         im3 = axes0[1].imshow(
             phase_f, origin="lower", extent=extent, aspect="equal"
         )
-        axes0[1].set_title("Relaxed phase")
+        axes0[1].set_title("Phase")
         axes0[1].set_xlabel("x (µm)")
         axes0[1].set_ylabel("y (µm)")
         axes0[1].grid(False)
@@ -293,10 +309,6 @@ def plot_psi(
 
         if show:
             plt.show()
-
-    psi_np = psi.detach().cpu().numpy()
-    phase = np.angle(psi_np)
-    density = np.abs(psi_np)**2
 
     vort, antiv = detect_vortices_masked(
         psi,
@@ -317,28 +329,23 @@ def plot_psi(
         axes = fig.subplots(1, 2)
 
     im0 = axes[0].imshow(
-        density,
+        dens_f,
         origin="lower",
         extent=extent,
         aspect="equal",
+        norm=dens_norm,
     )
 
     axes[0].scatter(
-        x_v, y_v,
-        s=12,
-        facecolors="none",
-        edgecolors="red",
-        label=f"vortex ({len(vort)})",
+        x_v, y_v, s=12, facecolors="none", edgecolors="red",
+        label=f"vortex ({len(vort) if override_vort is None else override_vort})",
     )
     axes[0].scatter(
-        x_av, y_av,
-        s=12,
-        marker="x",
-        color="yellow",
-        label=f"antivortex ({len(antiv)})",
+        x_av, y_av, s=12, marker="x", color="yellow",
+        label=f"antivortex ({len(antiv) if override_antivort is None else override_antivort})",
     )
 
-    axes[0].set_title("Density with vortices")
+    axes[0].set_title("Density with vortices" + suffix)
     axes[0].set_xlabel("x (µm)")
     axes[0].set_ylabel("y (µm)")
     axes[0].legend()
@@ -352,18 +359,8 @@ def plot_psi(
         vmax=np.pi,
     )
 
-    axes[1].scatter(
-        x_v, y_v,
-        s=12,
-        facecolors="none",
-        edgecolors="red",
-    )
-    axes[1].scatter(
-        x_av, y_av,
-        s=12,
-        marker="x",
-        color="yellow",
-    )
+    axes[1].scatter(x_v, y_v, s=12, facecolors="none", edgecolors="red")
+    axes[1].scatter(x_av, y_av, s=12, marker="x", color="yellow")
 
     axes[1].set_title("Phase with vortices")
     axes[1].set_xlabel("x (µm)")
@@ -664,8 +661,10 @@ def detect_vortices_masked(
     psi,
     density_mask=None,
     density_threshold=0.05,
+    min_dist=None,          # in plaquette (index) units; None = no merging
+    merge_vort_antiv=False, # if True, also drop a vortex/antivortex that is
+                            # within min_dist of one of opposite sign
 ):
-
     if torch.is_tensor(psi):
         psi = psi.detach().cpu().numpy()
     else:
@@ -713,11 +712,62 @@ def detect_vortices_masked(
 
     if len(vort):
         vort = vort[plaquette_mask[vort_i[:, 0], vort_i[:, 1]]]
-
     if len(antiv):
         antiv = antiv[plaquette_mask[antiv_i[:, 0], antiv_i[:, 1]]]
 
+    if min_dist is not None:
+        vort = merge_close_points(vort, min_dist)
+        antiv = merge_close_points(antiv, min_dist)
+
+        if merge_vort_antiv and len(vort) and len(antiv):
+            # remove pairs closer than min_dist (treated as bound pairs / noise)
+            d = np.linalg.norm(vort[:, None, :] - antiv[None, :, :], axis=-1)
+            close = d < min_dist
+            vort = vort[~close.any(axis=1)]
+            antiv = antiv[~close.any(axis=0)]
+
     return vort, antiv
+
+
+def count_vortices(state, density_mask, min_dist=None, **kw):
+    vort, antiv = detect_vortices_masked(
+        state, density_mask=density_mask, min_dist=min_dist, **kw
+    )
+    return len(vort) + len(antiv)
+
+
+import numpy as np
+
+
+def merge_close_points(points, min_dist):
+    """
+    Greedy de-duplication: a point is kept only if it is at least
+    `min_dist` away from every point already kept.
+    Returns the kept points (N, 2) in the original order.
+    """
+    points = np.asarray(points, dtype=float).reshape(-1, 2)
+    kept = []
+    for p in points:
+        if all(np.hypot(*(p - q)) >= min_dist for q in kept):
+            kept.append(p)
+    return np.array(kept).reshape(-1, 2)
+
+
+def merge_close_points_centroid(points, min_dist):
+    """
+    Cluster points so that anything within `min_dist` of a cluster
+    (single-linkage, i.e. chained) ends up in the same group; returns
+    one centroid per cluster. Less order-dependent than the greedy version.
+    """
+    from scipy.cluster.hierarchy import fcluster, linkage
+
+    points = np.asarray(points, dtype=float).reshape(-1, 2)
+    if len(points) <= 1:
+        return points
+    labels = fcluster(linkage(points, method="single"),
+                      t=min_dist, criterion="distance")
+    return np.array([points[labels == l].mean(axis=0)
+                     for l in np.unique(labels)])
 
 
 import numpy as np
@@ -1068,10 +1118,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
-
-def fit_coarsening_growth(datasets, times, ylabel=r'$\xi$',
+def fit_coarsening_growth(
+    datasets, times, ylabel=r'$\xi$',
     start_frac=0.01, report_z=True, xlabelsize=20, ylabelsize=20,
-    pal=None, figsize=(12, 6.5), return_data=False, model='power'):
+    pal=None, figsize=(12, 6.5), return_data=False, model='power',
+    yscale='linear', xscale='linear',
+):
 
     import numpy as np
     import matplotlib.pyplot as plt
@@ -1082,9 +1134,45 @@ def fit_coarsening_growth(datasets, times, ylabel=r'$\xi$',
 
     plotted_data = []
 
-    for y, label in datasets:
+    # ============================================================
+    # Handle times:
+    #   1. Single time array -> use for all datasets
+    #   2. List of time arrays -> one for each dataset
+    # ============================================================
+
+    # If times is a list/tuple whose elements are themselves arrays,
+    # interpret it as one time array per dataset.
+    if isinstance(times, (list, tuple)) and len(times) > 0 \
+            and isinstance(times[0], (list, tuple, np.ndarray)):
+
+        if len(times) != len(datasets):
+            raise ValueError(
+                f"Number of time arrays ({len(times)}) must match "
+                f"number of datasets ({len(datasets)})."
+            )
+
+        times_list = times
+
+    else:
+        # Single time array: use it for every dataset
+        times_list = [times] * len(datasets)
+
+    # ============================================================
+    # Loop over datasets
+    # ============================================================
+
+    for i, (dataset, times_i) in enumerate(zip(datasets, times_list)):
+
+        y, label = dataset
+
         y = np.asarray(y)
-        t_abs = np.asarray(times[:len(y)])
+        t_abs = np.asarray(times_i[:len(y)])
+
+        if len(t_abs) < len(y):
+            raise ValueError(
+                f"Time array for '{label}' has only {len(t_abs)} points, "
+                f"but dataset has {len(y)} points."
+            )
 
         t = t_abs - t_abs[0]
 
@@ -1103,7 +1191,10 @@ def fit_coarsening_growth(datasets, times, ylabel=r'$\xi$',
             power_model,
             tf,
             yf,
-            p0=[(yf[-1] - xi0) / tf[-1]**0.5, 2.0],
+            p0=[
+                (yf[-1] - xi0) / tf[-1]**0.5,
+                2.0
+            ],
             bounds=([0, 0.2], [np.inf, 20])
         )
 
@@ -1113,15 +1204,15 @@ def fit_coarsening_growth(datasets, times, ylabel=r'$\xi$',
         pred_p = power_model(tf, *popt_p)
         rss_p = np.sum((yf - pred_p)**2)
         tss = np.sum((yf - np.mean(yf))**2)
-        r2_p = 1 - rss_p/tss
+        r2_p = 1 - rss_p / tss
 
         n = len(yf)
         k_p = 2
-        aic_p = n * np.log(rss_p/n) + 2*k_p
+        aic_p = n * np.log(rss_p / n) + 2 * k_p
 
         # ---------- log-corrected power law ----------
         def log_model(t, A, z, t0):
-            return xi0 + A * (t / np.log(t/t0))**(1/z)
+            return xi0 + A * (t / np.log(t / t0))**(1/z)
 
         t0_max = tf.min() * 0.99
         t0_guess = tf.min() * 0.1
@@ -1130,7 +1221,11 @@ def fit_coarsening_growth(datasets, times, ylabel=r'$\xi$',
             log_model,
             tf,
             yf,
-            p0=[(yf[-1] - xi0) / tf[-1]**0.5, 2.0, t0_guess],
+            p0=[
+                (yf[-1] - xi0) / tf[-1]**0.5,
+                2.0,
+                t0_guess
+            ],
             bounds=(
                 [0, 0.2, 1e-12],
                 [np.inf, 20, t0_max]
@@ -1144,10 +1239,10 @@ def fit_coarsening_growth(datasets, times, ylabel=r'$\xi$',
 
         pred_l = log_model(tf, *popt_l)
         rss_l = np.sum((yf - pred_l)**2)
-        r2_l = 1 - rss_l/tss
+        r2_l = 1 - rss_l / tss
 
         k_l = 3
-        aic_l = n * np.log(rss_l/n) + 2*k_l
+        aic_l = n * np.log(rss_l / n) + 2 * k_l
 
         # ---------- print ----------
         print(f'\n{label}')
@@ -1165,11 +1260,20 @@ def fit_coarsening_growth(datasets, times, ylabel=r'$\xi$',
         delta_aic = aic_l - aic_p
 
         if delta_aic < -2:
-            print(f'→ Log-corrected preferred (ΔAIC = {delta_aic:.2f})')
+            print(
+                f'→ Log-corrected preferred '
+                f'(ΔAIC = {delta_aic:.2f})'
+            )
         elif delta_aic > 2:
-            print(f'→ Power law preferred (ΔAIC = {delta_aic:.2f})')
+            print(
+                f'→ Power law preferred '
+                f'(ΔAIC = {delta_aic:.2f})'
+            )
         else:
-            print(f'→ No clear preference (ΔAIC = {delta_aic:.2f})')
+            print(
+                f'→ No clear preference '
+                f'(ΔAIC = {delta_aic:.2f})'
+            )
 
         # ---------- plot ----------
         tt = np.linspace(tf.min(), tf.max(), 1000)
@@ -1177,17 +1281,23 @@ def fit_coarsening_growth(datasets, times, ylabel=r'$\xi$',
         if pal is None:
             plt.plot(t * 1e3, y, alpha=0.5)
         else:
-            plt.plot(t * 1e3, y, alpha=0.5, color=pal[__])
+            plt.plot(
+                t * 1e3,
+                y,
+                alpha=0.5,
+                color=pal[i]
+            )
 
-        p = round(1/z_p, 2)
+        p = round(1 / z_p, 2)
 
         if model == 'power':
             fit_curve = power_model(tt, *popt_p)
             fit_label = (
-                fr'{label} power: $z={z_p:.2f}$'
+                fr'{label} power: $z={z_p:.2f} ± {z_p_err:.3f}$'
                 if report_z
                 else f'{label}, t^({str(p)}), z={round(1.75/p, 2)}'
             )
+
         elif model == 'log':
             fit_curve = log_model(tt, *popt_l)
             fit_label = (
@@ -1195,6 +1305,7 @@ def fit_coarsening_growth(datasets, times, ylabel=r'$\xi$',
                 if report_z
                 else f'{label}, log-corrected, z={z_l:.2f}'
             )
+
         else:
             raise ValueError("model must be 'power' or 'log'")
 
@@ -1210,9 +1321,12 @@ def fit_coarsening_growth(datasets, times, ylabel=r'$\xi$',
                 tt * 1e3,
                 fit_curve,
                 '--',
-                color=pal[__],
+                color=pal[i],
                 label=fit_label
             )
+
+        plt.xscale(xscale)
+        plt.yscale(yscale)
 
         # ---------- save plotted data ----------
         if return_data:
@@ -1243,18 +1357,271 @@ def fit_coarsening_growth(datasets, times, ylabel=r'$\xi$',
 
         __ += 1
 
-    plt.xlabel('Time since start of fit (ms)', size=xlabelsize)
+    plt.xlabel(
+        'Time since start of fit (ms)',
+        size=xlabelsize
+    )
     plt.ylabel(ylabel, size=ylabelsize)
     plt.legend(loc='upper left', fontsize=xlabelsize)
     plt.tight_layout()
 
     if ylabel == r'$|\alpha|$':
         plt.savefig('../figs/z(T)_scaling_TQuenches_ALPHA.pdf')
+
     if ylabel == r'$\xi$':
         plt.savefig('../figs/z(T)_scaling_TQuenches_XI.pdf')
+
     if ylabel == r'$N_0$':
         plt.savefig('../figs/z(T)_scaling_TQuenches_N0.pdf')
 
+    if ylabel == r'Mean Patch Coherence $\langle |m_j| \rangle$':
+        plt.savefig('../figs/Mean_Patch_Coherence.pdf')
+
+
+    plt.show()
+
+    if return_data:
+        return plotted_data
+
+
+def fit_vortex_decay(
+    datasets,
+    times,
+    ylabel=r'$N_v$',
+    start_frac=0.01,
+    report_z=True,
+    xlabelsize=20,
+    ylabelsize=20,
+    pal=None,
+    figsize=(12, 6.5),
+    return_data=False,
+    yscale='linear',
+    xscale='linear',
+):
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from scipy.optimize import curve_fit
+
+    plt.figure(figsize=figsize)
+
+    plotted_data = []
+
+    for i, (y, label) in enumerate(datasets):
+
+        y = np.asarray(y, dtype=float)
+        t_abs = np.asarray(times[:len(y)], dtype=float)
+
+        # Time relative to beginning of supplied data
+        t = t_abs - t_abs[0]
+
+        # Remove invalid points
+        mask = (
+            np.isfinite(t) &
+            np.isfinite(y) &
+            (t >= 0) &
+            (y > 0)
+        )
+
+        t = t[mask]
+        y = y[mask]
+
+        # ----------------------------------------------------
+        # Initial vortex number
+        # ----------------------------------------------------
+
+        Nv0 = y[0]
+
+        # ----------------------------------------------------
+        # Fit
+        #
+        # Nv(t) = Nv0 * (1 + t/tau0)^(-2/z)
+        # ----------------------------------------------------
+
+        def vortex_power_model(t, tau0, z):
+
+            return Nv0 * (
+                1.0 + t / tau0
+            )**(-2.0 / z)
+
+        # Initial guesses
+        tau0_guess = 0.1 * (t[-1] - t[0])
+        z_guess = 1.7
+
+        popt, pcov = curve_fit(
+            vortex_power_model,
+            t,
+            y,
+            p0=[
+                tau0_guess,
+                z_guess
+            ],
+            bounds=(
+                [
+                    1e-12,
+                    0.2
+                ],
+                [
+                    np.inf,
+                    20
+                ]
+            ),
+            maxfev=100000
+        )
+
+        tau0, z = popt
+
+        tau0_err = np.sqrt(
+            np.maximum(pcov[0, 0], 0)
+        )
+
+        z_err = np.sqrt(
+            np.maximum(pcov[1, 1], 0)
+        )
+
+        # ----------------------------------------------------
+        # Goodness of fit
+        # ----------------------------------------------------
+
+        pred = vortex_power_model(t, *popt)
+
+        rss = np.sum(
+            (y - pred)**2
+        )
+
+        tss = np.sum(
+            (y - np.mean(y))**2
+        )
+
+        r2 = 1 - rss / tss
+
+        n = len(y)
+        k = 2
+
+        aic = (
+            n * np.log(rss / n)
+            + 2 * k
+        )
+
+        # ----------------------------------------------------
+        # Print
+        # ----------------------------------------------------
+
+        print(f'\n{label}')
+        print('------------------------------')
+
+        print(
+            f'N_v(0) = {Nv0:.4g}'
+        )
+
+        print(
+            f'Power law: '
+            f'z = {z:.3f} ± {z_err:.3f}, '
+            f'tau0 = {tau0*1e3:.4f} ± '
+            f'{tau0_err*1e3:.4f} ms, '
+            f'R² = {r2:.5f}, '
+            f'AIC = {aic:.2f}'
+        )
+
+        # ----------------------------------------------------
+        # Plot
+        # ----------------------------------------------------
+
+        tt = np.linspace(
+            t.min(),
+            t.max(),
+            1000
+        )
+
+        fit_curve = vortex_power_model(
+            tt,
+            *popt
+        )
+
+        if pal is None:
+
+            plt.plot(
+                t * 1e3,
+                y,
+                alpha=0.5
+            )
+
+            plt.plot(
+                tt * 1e3,
+                fit_curve,
+                '--',
+                label=(
+                    fr'{label}: $z={z:.2f}$'
+                    if report_z
+                    else label
+                )
+            )
+
+        else:
+
+            plt.plot(
+                t * 1e3,
+                y,
+                alpha=0.5,
+                color=pal[i]
+            )
+
+            plt.plot(
+                tt * 1e3,
+                fit_curve,
+                '--',
+                color=pal[i],
+                label=(
+                    fr'{label}: $z={z:.2f}$'
+                    if report_z
+                    else label
+                )
+            )
+
+        plt.xscale(xscale)
+        plt.yscale(yscale)
+
+        # ----------------------------------------------------
+        # Save
+        # ----------------------------------------------------
+
+        if return_data:
+
+            plotted_data.append({
+                'label': label,
+                't_ms': t * 1e3,
+                'y': y,
+                'Nv0': Nv0,
+
+                'tt_ms': tt * 1e3,
+                'fit': fit_curve,
+
+                'tau0': tau0,
+                'tau0_err': tau0_err,
+
+                'z': z,
+                'z_err': z_err,
+
+                'r2': r2,
+                'aic': aic,
+            })
+
+    plt.xlabel(
+        'Time since start of fit (ms)',
+        size=xlabelsize
+    )
+
+    plt.ylabel(
+        ylabel,
+        size=ylabelsize
+    )
+
+    plt.legend(
+        loc='best',
+        fontsize=xlabelsize
+    )
+
+    plt.tight_layout()
     plt.show()
 
     if return_data:

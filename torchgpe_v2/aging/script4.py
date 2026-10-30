@@ -6,6 +6,23 @@ import psutil
 import torch
 import numpy as np
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "0"):
+        return False
+    raise argparse.ArgumentTypeError("Expected a boolean value.")
+
+
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+torch.set_num_threads(1)
+torch.set_num_interop_threads(1)
+
 
 # ============================================================
 # Arguments
@@ -29,7 +46,6 @@ parser.add_argument("--enable_temperature", type=bool, default=True)
 
 parser.add_argument("--final_time", type=float, default=60e-3)
 
-parser.add_argument("--T_ramp_trap", type=float, default=4e-3)
 parser.add_argument("--T_ramp_TP", type=float, default=8e-3)
 
 parser.add_argument("--t_delay_temp1", type=float, default=0)
@@ -39,6 +55,8 @@ parser.add_argument("--trap_final", type=float, default=None)
 
 parser.add_argument("--box_length", type=float, default=15e-6)
 parser.add_argument("--final_length", type=float, default=15e-6)
+parser.add_argument("--atomic_detuning", type=float, default=-76.6e9)
+parser.add_argument("--wall_height", type=float, default=1000)
 
 parser.add_argument("--N_grid", type=float, default=256)
 
@@ -48,6 +66,19 @@ parser.add_argument("--f_probe_min", type=float, default=0)
 parser.add_argument("--f_probe_max", type=float, default=0)
 parser.add_argument("--probe_amplitude", type=float, default=0)
 parser.add_argument("--probe_duration", type=float, default=0)
+parser.add_argument("--time_step", type=float, default=1e-6)
+
+parser.add_argument("--T_ramp_trap", type=float, default=1e-3)
+parser.add_argument("--a_s", type=float, default=100)
+parser.add_argument("--a_s2", type=float, default=-1)
+parser.add_argument("--box_trap", type=str2bool, required=True)
+
+parser.add_argument(
+    "--init_state",
+    type=str,
+    default=None,
+    help="Path to a .pt file containing {'state': tensor}. Skips thermalization and first SO propagation.",
+)
 
 # If supplied, try to skip the first SO propagation.
 # If the requested cache does not exist, SO is performed and saved.
@@ -70,6 +101,24 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
+
+init_state = None
+if args.init_state is not None:
+    print(
+        f"[INIT] Loading initial state:\n"
+        f"       {args.init_state}",
+        flush=True,
+    )
+    data = torch.load(
+        args.init_state,
+        map_location="cpu",
+        weights_only=False,
+    )
+    init_state = data["state"]
+    print(
+        f"[INIT] Loaded state with shape: {tuple(init_state.shape)}",
+        flush=True,
+    )
 
 
 # ============================================================
@@ -107,7 +156,7 @@ from torchgpe_v2.bec2D.bilayer_v5 import (
 # Parameters
 # ============================================================
 
-monitor_every, monitor_every_th = (500, 1000)
+monitor_every, monitor_every_th = (100, 1000)
 #monitor_every, monitor_every_th = (100000, 100000)
 
 temperature1 = args.temperature1
@@ -115,6 +164,7 @@ temperature2 = args.temperature2
 
 N_particles1 = args.N_particles1
 N_particles2 = args.N_particles2
+wall_height = args.wall_height
 
 grid_size = args.grid_size
 thermalization_time = args.thermalization_time
@@ -126,7 +176,6 @@ enable_temperature = args.enable_temperature
 
 final_time = args.final_time
 
-T_ramp_trap = args.T_ramp_trap
 T_ramp_TP = args.T_ramp_TP
 
 t_delay_temp1 = args.t_delay_temp1
@@ -134,25 +183,41 @@ N_grid = args.N_grid
 
 box_length = args.box_length
 final_length = args.final_length
+T_ramp_trap = args.T_ramp_trap
+atomic_detuning = args.atomic_detuning
 
 t_probe_delay = args.t_probe_delay
 f_probe_min = args.f_probe_min
 f_probe_max = args.f_probe_max
 probe_amplitude = args.probe_amplitude
 probe_duration = args.probe_duration
+box_trap = args.box_trap
+a_s = args.a_s
+a_s2 = args.a_s2
 
-dt = 1e-6
+if a_s2 == -1:
+    a_s2 = a_s
+
+dt = args.time_step
 J = 0
-detuning = -10e6
+detuning = -4e6
 imaginary_steps = 500
 
 seed = np.random.randint(1_000_000)
 torch.manual_seed(seed)
 np.random.seed(seed)
 
-config = parse_config("config.yaml")
+trap_initial_ = Trap(omegax=box_length, omegay=box_length)
+if box_trap:
+    print('Using BoxTrap')
+    trap_initial_ = BoxTrap(
+        box_length=box_length,
+        wall_height=wall_height
+    )
 
-contact = Contact(a_s=100)
+config = parse_config("config.yaml")
+contact = Contact(a_s=a_s)
+contact2 = Contact(a_s=a_s2)
 
 _process = psutil.Process(os.getpid())
 
@@ -163,10 +228,28 @@ _process = psutil.Process(os.getpid())
 
 def print_mem(label):
     rss = _process.memory_info().rss / 1024**3
-    print(
-        f"[MEM] {label}: {rss:.3f} GB",
-        flush=True,
-    )
+    print(f"[MEM] {label}: {rss:.3f} GB", flush=True)
+
+def omega_of_t(t, omega_initial, omega_final, T_ramp, t_delay=0):
+    if t is None:
+        t = 0.0
+    if t <= t_delay:
+        return omega_initial
+    if t >= t_delay + T_ramp:
+        return omega_final
+    x = (t - t_delay) / T_ramp
+    s = 10*x**3 - 15*x**4 + 6*x**5
+    diff = omega_final - omega_initial
+    return  diff * s + omega_initial
+
+def L_of_t(t, L_initial=15e-6, L_final=15e-6, T_ramp=10e-3, t_delay_trap_ramp=0):
+    if t is None:
+        t = 0.0
+    if t < t_delay_trap_ramp:
+        return L_initial
+    if t < T_ramp+t_delay_trap_ramp:
+        return L_initial + (L_final - L_initial) * (t-t_delay_trap_ramp) / T_ramp
+    return L_final
 
 
 def lattice_ramp(
@@ -203,17 +286,7 @@ def lattice_ramp(
 def lattice_static(t, VP=4):
     return VP
 
-def omega_of_t(t, omega_initial, omega_final, T_ramp, t_delay=0):
-    if t is None:
-        t = 0.0
-    if t <= t_delay:
-        return 0.0
-    if t >= t_delay + T_ramp:
-        return omega_final
-    x = (t - t_delay) / T_ramp
-    s = 10*x**3 - 15*x**4 + 6*x**5
-    diff = omega_final - omega_initial
-    return  diff * s + omega_initial
+
 
 def cavity_probe_chirp(
     t,
@@ -281,13 +354,6 @@ lattice_ramp_ = lambda t: lattice_ramp(
     t_delay=0,
     VP=VP,
 )
-
-
-# Initial box
-trap_initial_ = BoxTrap(
-    box_length=box_length
-)
-#trap_initial_ = Trap(omegax=box_length, omegay=box_length)
 
 
 # ============================================================
@@ -385,7 +451,7 @@ def get_or_make_thermal_state(
         monitor_every=monitor_every_th,
 
         gamma=gamma,
-        contact_as=100,
+        contact_as=a_s,
         N_grid=N_grid,
 
         trap=trap,
@@ -533,15 +599,15 @@ def qTemp_SO(
     # Box stays constant during the temperature quench
     # ========================================================
 
-    trap_dyn = BoxTrap(
-        box_length=box_length
-    )
-    #trap_dyn = Trap(
-        #omegax=lambda t: omega_of_t(t, box_length, 
-            #final_length, 0, t_delay=0),
-        #omegay=lambda t: omega_of_t(t, box_length, 
-            #final_length, 0, t_delay=0),
-    #)
+    trap_dyn = Trap(
+            omegax=lambda t: omega_of_t(t, box_length, final_length, T_ramp_trap, t_delay=0),
+            omegay=lambda t: omega_of_t(t, box_length, final_length, T_ramp_trap, t_delay=0),
+        )
+    if box_trap:
+        print('Using BoxTrap')
+        trap_dyn = BoxTrap(box_length=lambda t: L_of_t(t, box_length, 
+            final_length, T_ramp_trap, t_delay_trap_ramp=0), 
+        wall_height=wall_height)
 
 
     # ========================================================
@@ -554,7 +620,11 @@ def qTemp_SO(
     cavity1 = DispersiveCavity(
         lattice_depth=lattice_ramp_,
         cavity_detuning=detuning,
-        **config["potentials"]["cavity"],
+        atomic_detuning= atomic_detuning,
+        cavity_decay= 150e3,
+        cavity_coupling= 1.95e6,
+        cavity_angle= 0,
+        pump_angle= np.pi/2,
     )
 
     cavity_monitor1 = CavityMonitor(
@@ -768,10 +838,8 @@ def qTemp_SO(
         bilayer, pots1, pots2, P1, P2 = make_bilayer(
             state_thermal,
             state_thermal,
-
             seed,
-
-            trap=trap_dyn,
+            trap=trap_initial_,
             N_grid=N_grid,
             N_particles=N_particles,
 
@@ -786,7 +854,7 @@ def qTemp_SO(
         mu1 = estimate_mu(
             bilayer.layer1,
             [
-                trap_dyn,
+                trap_initial_,
                 contact,
             ],
         )
@@ -828,13 +896,13 @@ def qTemp_SO(
             chemical_potential=mu1,
 
             potentials1=[
-                trap_dyn,
+                trap_initial_,
                 contact,
                 cavity1,
             ],
 
             potentials2=[
-                trap_dyn,
+                trap_initial_,
                 contact,
                 cavity1,
             ],
@@ -941,8 +1009,11 @@ def qTemp_SO(
     cavity2 = DispersiveCavity(
         lattice_depth=lattice_static_,
         cavity_detuning=detuning,
-        cavity_probe=cavity_probe,
-        **config["potentials"]["cavity"],
+        atomic_detuning= atomic_detuning,
+        cavity_decay= 150e3,
+        cavity_coupling= 1.95e6,
+        cavity_angle= 0,
+        pump_angle= np.pi/2,
     )
 
 
@@ -980,7 +1051,7 @@ def qTemp_SO(
         bilayer.layer1,
         [
             trap_dyn,
-            contact,
+            contact2,
         ],
     )
 
@@ -1020,13 +1091,13 @@ def qTemp_SO(
 
         potentials1=[
             trap_dyn,
-            contact,
+            contact2,
             cavity2,
         ],
 
         potentials2=[
             trap_dyn,
-            contact,
+            contact2,
             cavity2,
         ],
 
@@ -1058,21 +1129,18 @@ def qTemp_SO(
 # Run
 # ============================================================
 
+
+
 res1, res2, cm1, cm2 = qTemp_SO(
     enable_temperature=enable_temperature,
-
     gamma=gamma,
-
     temp1=temperature1,
     temp2=temperature2,
-
     t_delay_temp1=t_delay_temp1,
-
     final_time=final_time,
-
     thermalization_time=thermalization_time,
-
     N_particles=N_particles1,
+    init_state=init_state,
 )
 
 
@@ -1111,7 +1179,7 @@ save_path = save_quench_run(
     N_grid=N_grid,
     VP=VP,
 
-    a_s=100,
+    a_s=a_s,
 
     prefix=f"Temp_Quench_T1_{temperature1:g}_",
 )
