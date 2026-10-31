@@ -1,2 +1,6 @@
 __pycache__/
+torchgpe_v2/aging/results/
+torchgpe_v2/aging/results_trimmed/
+torchgpe_v2/aging/thermal_states/
+torchgpe_v2/aging/results_to_delete
 *.py[cod]
