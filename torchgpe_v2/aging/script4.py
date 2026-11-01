@@ -157,7 +157,7 @@ from torchgpe_v2.bec2D.bilayer_v5 import (
 # Parameters
 # ============================================================
 
-monitor_every, monitor_every_th = (500, 1000)
+monitor_every, monitor_every_th = (2000, 1000)
 #monitor_every, monitor_every_th = (100000, 100000)
 
 temperature1 = args.temperature1
