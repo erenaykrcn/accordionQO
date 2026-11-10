@@ -34,9 +34,14 @@ def save_quench_run(
     a_s,
     N_grid,
     prefix,
+    extra_attrs=None,
 ):
     """
     Save the SGPE states, cavity fields, and run parameters in HDF5 format.
+
+    extra_attrs: optional dict of additional scalar/string attributes
+    (e.g. pump scheme, seed). With a multi-mode cavity, the alpha
+    datasets have shape (Nt, n_modes) instead of (Nt,).
     """
     output_path, run_id = get_next_quench_path(
         output_dir=output_dir,
@@ -125,6 +130,9 @@ def save_quench_run(
         h5file.attrs["final_time2"] = final_time2
         h5file.attrs["J"] = J
         h5file.attrs["detuning"] = detuning
+
+        for key, value in (extra_attrs or {}).items():
+            h5file.attrs[key] = value
 
     print(f"Saved run {run_id} to: {output_path}")
 
